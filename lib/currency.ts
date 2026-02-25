@@ -1,9 +1,9 @@
 /**
- * Currency: RWF (Rwandan Franc) per PRD.
+ * Currency: Rwandan Franc (RWF). Symbol FRw used for display per local convention.
  * Single source for symbol and formatting across the app.
  */
 export const CURRENCY_CODE = 'RWF';
-export const CURRENCY_SYMBOL = 'RWF';
+export const CURRENCY_SYMBOL = 'FRw';
 
 /** Format amount in RWF: "1,234,567" or "1.2M" for millions when compact. */
 export function formatCurrency(amount: number, compact = false): string {

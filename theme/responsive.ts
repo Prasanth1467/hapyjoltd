@@ -65,7 +65,7 @@ export function useResponsiveTheme(): ResponsiveTheme {
       height: dimensions.height,
       scale,
       scaleMin,
-      screenPadding: isNarrow ? 12 : 16,
+      screenPadding: 16,
       modalMaxHeightRatio: dimensions.height < 600 ? 0.88 : 0.85,
       tabIconSize: scale(22),
       tabLabelSize: scale(11),
@@ -81,5 +81,5 @@ export function useResponsiveTheme(): ResponsiveTheme {
       spacingLg: scale(24),
       spacingXl: scale(32),
     };
-  }, [dimensions.width, dimensions.height]);
+  }, [dimensions]);
 }

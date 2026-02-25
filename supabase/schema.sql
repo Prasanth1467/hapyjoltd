@@ -19,7 +19,10 @@ CREATE TABLE public.profiles (
   profile_image text,
   active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  last_lat numeric(10,6),
+  last_lon numeric(10,6),
+  location_updated_at timestamptz
 );
 
 -- Sites
@@ -40,7 +43,7 @@ CREATE TABLE public.sites (
   contract_rate_rwf bigint
 );
 
--- Vehicles
+-- Vehicles (status: active/inactive for soft delete; head_supervisor and assistant_supervisor must not hard delete)
 CREATE TABLE public.vehicles (
   id text PRIMARY KEY,
   site_id text NOT NULL REFERENCES public.sites(id) ON DELETE CASCADE,
@@ -52,7 +55,8 @@ CREATE TABLE public.vehicles (
   fuel_balance_litre numeric(12,2) NOT NULL DEFAULT 0,
   ideal_consumption_range text,
   health_inputs text,
-  ideal_working_range text
+  ideal_working_range text,
+  status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'inactive'))
 );
 
 -- Expenses

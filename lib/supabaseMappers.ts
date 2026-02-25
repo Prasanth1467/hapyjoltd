@@ -12,6 +12,7 @@ import type {
   Task,
   Operation,
   Report,
+  Notification,
 } from '@/types';
 
 /** DB row (snake_case) → App (camelCase) */
@@ -26,6 +27,9 @@ export function profileFromRow(row: Record<string, unknown>): User {
     phone: row.phone != null ? String(row.phone) : undefined,
     profileImage: row.profile_image != null ? String(row.profile_image) : undefined,
     active: Boolean(row.active),
+    lastLat: row.last_lat != null ? Number(row.last_lat) : undefined,
+    lastLon: row.last_lon != null ? Number(row.last_lon) : undefined,
+    locationUpdatedAt: row.location_updated_at != null ? String(row.location_updated_at) : undefined,
   };
 }
 
@@ -51,16 +55,18 @@ export function siteFromRow(row: Record<string, unknown>): Site {
 export function vehicleFromRow(row: Record<string, unknown>): Vehicle {
   return {
     id: String(row.id),
-    siteId: String(row.site_id),
+    siteId: row.site_id != null && row.site_id !== '' ? String(row.site_id) : undefined,
     type: row.type as Vehicle['type'],
     vehicleNumberOrId: String(row.vehicle_number_or_id),
     mileageKmPerLitre: row.mileage_km_per_litre != null ? Number(row.mileage_km_per_litre) : undefined,
     hoursPerLitre: row.hours_per_litre != null ? Number(row.hours_per_litre) : undefined,
+    capacityTons: row.capacity_tons != null ? Number(row.capacity_tons) : undefined,
     tankCapacityLitre: Number(row.tank_capacity_litre ?? 0),
     fuelBalanceLitre: Number(row.fuel_balance_litre ?? 0),
     idealConsumptionRange: row.ideal_consumption_range != null ? String(row.ideal_consumption_range) : undefined,
     healthInputs: row.health_inputs != null ? String(row.health_inputs) : undefined,
     idealWorkingRange: row.ideal_working_range != null ? String(row.ideal_working_range) : undefined,
+    status: (row.status as Vehicle['status']) ?? 'active',
   };
 }
 
@@ -215,6 +221,19 @@ export function reportFromRow(row: Record<string, unknown>): Report {
   };
 }
 
+export function notificationFromRow(row: Record<string, unknown>): Notification {
+  return {
+    id: String(row.id),
+    targetRole: String(row.target_role),
+    title: String(row.title),
+    body: String(row.body),
+    createdAt: row.created_at != null ? String(row.created_at) : '',
+    read: Boolean(row.read),
+    linkId: row.link_id != null ? String(row.link_id) : undefined,
+    linkType: row.link_type != null ? String(row.link_type) : undefined,
+  };
+}
+
 /** App (camelCase) → DB row (snake_case) for insert/update */
 
 export function profileToRow(u: Partial<User>): Record<string, unknown> {
@@ -226,6 +245,9 @@ export function profileToRow(u: Partial<User>): Record<string, unknown> {
   if (u.phone !== undefined) row.phone = u.phone;
   if (u.profileImage !== undefined) row.profile_image = u.profileImage;
   if (u.active !== undefined) row.active = u.active;
+  if (u.lastLat !== undefined) row.last_lat = u.lastLat ?? null;
+  if (u.lastLon !== undefined) row.last_lon = u.lastLon ?? null;
+  if (u.locationUpdatedAt !== undefined) row.location_updated_at = u.locationUpdatedAt ?? null;
   return row;
 }
 
@@ -251,7 +273,7 @@ export function siteToRow(s: Partial<Site>): Record<string, unknown> {
 export function vehicleToRow(v: Partial<Vehicle>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if (v.id != null) row.id = v.id;
-  if (v.siteId != null) row.site_id = v.siteId;
+  if (v.siteId !== undefined) row.site_id = v.siteId || null;
   if (v.type != null) row.type = v.type;
   if (v.vehicleNumberOrId != null) row.vehicle_number_or_id = v.vehicleNumberOrId;
   if (v.mileageKmPerLitre !== undefined) row.mileage_km_per_litre = v.mileageKmPerLitre;
@@ -261,6 +283,8 @@ export function vehicleToRow(v: Partial<Vehicle>): Record<string, unknown> {
   if (v.idealConsumptionRange !== undefined) row.ideal_consumption_range = v.idealConsumptionRange;
   if (v.healthInputs !== undefined) row.health_inputs = v.healthInputs;
   if (v.idealWorkingRange !== undefined) row.ideal_working_range = v.idealWorkingRange;
+  if (v.capacityTons !== undefined) row.capacity_tons = v.capacityTons;
+  if (v.status !== undefined) row.status = v.status;
   return row;
 }
 
@@ -389,5 +413,18 @@ export function reportToRow(r: Partial<Report>): Record<string, unknown> {
   if (r.generatedDate != null) row.generated_date = r.generatedDate;
   if (r.period != null) row.period = r.period;
   if (r.data !== undefined) row.data = r.data;
+  return row;
+}
+
+export function notificationToRow(n: Partial<Notification>): Record<string, unknown> {
+  const row: Record<string, unknown> = {};
+  if (n.id != null) row.id = n.id;
+  if (n.targetRole != null) row.target_role = n.targetRole;
+  if (n.title != null) row.title = n.title;
+  if (n.body != null) row.body = n.body;
+  if (n.createdAt != null) row.created_at = n.createdAt;
+  if (n.read !== undefined) row.read = n.read;
+  if (n.linkId !== undefined) row.link_id = n.linkId;
+  if (n.linkType !== undefined) row.link_type = n.linkType;
   return row;
 }

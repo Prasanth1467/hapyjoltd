@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Platform, StatusBar } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { useLocale } from '@/context/LocaleContext';
+import { useMockAppStore } from '@/context/MockAppStoreContext';
 import { useResponsiveTheme } from '@/theme/responsive';
 import { getTabsForRole, type TabId } from '@/lib/rbac';
 import { RoleBasedDashboard } from '@/components/RoleBasedDashboard';
@@ -22,6 +23,8 @@ import {
   ClipboardCheck,
   AlertCircle,
   Camera,
+  RefreshCw,
+  Bell,
 } from 'lucide-react-native';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
 import { GpsCameraScreen } from '@/features/gpsCamera/GpsCameraScreen';
@@ -45,33 +48,56 @@ const TAB_CONFIG: Record<TabId, { labelKey: string; icon: typeof LayoutDashboard
   settings: { labelKey: 'tab_settings', icon: Settings },
 };
 
+/** Top inset so header bar and screen content render below the system status bar (Android notch/punch-hole safe). */
+function useTopSafeInset(): number {
+  const insets = useSafeAreaInsets();
+  const fallback = Platform.OS === 'android' ? (StatusBar.currentHeight ?? 28) : 0;
+  return Math.max(insets.top, fallback);
+}
+
 export function AppNavigation() {
   const { user } = useAuth();
-  const { t } = useLocale();
-  const insets = useSafeAreaInsets();
+  const { t, locale } = useLocale();
+  const { refetch, loading, notifications } = useMockAppStore();
+  const topInset = useTopSafeInset();
   const theme = useResponsiveTheme();
-  const tabIds = user ? getTabsForRole(user.role) : (['dashboard', 'settings'] as TabId[]);
+  const tabIds = useMemo(
+    () => (user ? getTabsForRole(user.role) : (['dashboard', 'settings'] as TabId[])),
+    [user]
+  );
   const [activeTab, setActiveTab] = useState<TabId>(tabIds[0]);
+  const [refreshing, setRefreshing] = useState(false);
 
+  const handleRefresh = useCallback(async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetch, refreshing]);
+
+  const tabIdsKey = tabIds.join(',');
   useEffect(() => {
     if (!tabIds.includes(activeTab)) {
       setActiveTab(tabIds[0]);
     }
-  }, [tabIds.join(','), activeTab]);
+  }, [tabIdsKey, activeTab, tabIds, setActiveTab]);
 
   const visibleTabs = tabIds.map((id) => ({ id, ...TAB_CONFIG[id], label: t(TAB_CONFIG[id].labelKey) }));
 
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <RoleBasedDashboard />;
+        return <RoleBasedDashboard onNavigateTab={setActiveTab} />;
       case 'reports':
         return <ReportsScreen />;
       case 'tasks':
         return user?.role === 'driver_truck' || user?.role === 'driver_machine' || user?.role === 'assistant_supervisor' || user?.role === 'head_supervisor' ? (
           <DriverTripsScreen />
         ) : (
-          <RoleBasedDashboard />
+          <RoleBasedDashboard onNavigateTab={setActiveTab} />
         );
       case 'users':
         return <UsersScreen />;
@@ -94,64 +120,137 @@ export function AppNavigation() {
     }
   };
 
+  const tabCount = visibleTabs.length;
+  const footerJustify = tabCount <= 3 ? 'center' : tabCount <= 5 ? 'space-evenly' : 'flex-start';
+  const footerScrollable = tabCount >= 6;
+
   return (
-    <SafeAreaView className="flex-1 bg-slate-50">
-      {/* Language switcher – responsive position */}
-      <View style={{ position: 'absolute', top: insets.top + theme.spacingSm, right: theme.screenPadding, zIndex: 10 }}>
-        <LanguageSwitcher />
-      </View>
-      <View className="flex-1">
-        {renderContent()}
+    <SafeAreaView className="flex-1 bg-slate-50" edges={['left', 'right']}>
+      <View style={{ flex: 1, paddingTop: topInset }}>
+        {/* Compact top bar: Refresh + Language – minimal height, no dead space */}
+        <View
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingHorizontal: theme.screenPadding,
+            paddingVertical: 4,
+            minHeight: 36,
+            maxHeight: 36,
+            backgroundColor: 'transparent',
+          }}
+        >
+          <TouchableOpacity
+            onPress={handleRefresh}
+            disabled={refreshing || loading}
+            style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingHorizontal: 8, borderRadius: 8, backgroundColor: '#e2e8f0' }}
+          >
+            {refreshing || loading ? (
+              <ActivityIndicator size="small" color="#475569" />
+            ) : (
+              <RefreshCw size={18} color="#475569" />
+            )}
+            <Text style={{ color: '#475569', fontWeight: '500', fontSize: 11, marginLeft: 4 }}>
+              {refreshing || loading ? t('common_loading') : t('common_refresh')}
+            </Text>
+          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity
+              onPress={() => setActiveTab('settings')}
+              style={{ position: 'relative', padding: 4 }}
+              accessibilityLabel={t('settings_notifications')}
+            >
+              <Bell size={22} color="#475569" />
+              {notifications.filter((n) => !n.read).length > 0 && (
+                <View style={{ position: 'absolute', top: 0, right: 0, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: '#dc2626', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 }}>
+                  <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>
+                    {notifications.filter((n) => !n.read).length > 99 ? '99+' : notifications.filter((n) => !n.read).length}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+            <LanguageSwitcher />
+          </View>
+        </View>
+        <View key={locale} className="flex-1" style={{ minWidth: 0 }}>
+          {renderContent()}
+        </View>
       </View>
 
-      {/* Bottom Tab Bar – scrollable, responsive sizing for all phones */}
-      <View className="bg-white border-t border-slate-200/80 shadow-[0_-2px_10px_rgba(0,0,0,0.04)]">
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{
-            paddingHorizontal: theme.tabPaddingH,
-            paddingVertical: theme.tabPaddingV,
-            flexDirection: 'row',
-            alignItems: 'center',
-          }}
-          style={{ maxHeight: theme.tabPaddingV * 2 + theme.tabIconSize + theme.tabLabelSize + 8 }}
-        >
-          {visibleTabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <TouchableOpacity
-                key={tab.id}
-                onPress={() => setActiveTab(tab.id)}
-                activeOpacity={0.75}
-                className="items-center justify-center rounded-xl px-4 py-2 mr-1"
-                style={{
-                  minWidth: theme.tabItemMinWidth,
-                  backgroundColor: isActive ? 'rgba(30, 64, 175, 0.08)' : 'transparent',
-                }}
-              >
-                <Icon
-                  size={theme.tabIconSize}
-                  color={isActive ? '#1E40AF' : '#64748B'}
-                  strokeWidth={isActive ? 2.5 : 2}
-                />
-                <Text
+      {/* Bottom Tab Bar – alignment by icon count: 1–3 center, 4–5 space-evenly, 6+ scrollable */}
+      <View style={{ backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: 'rgba(226,232,240,0.9)', paddingVertical: theme.tabPaddingV, paddingHorizontal: theme.tabPaddingH }}>
+        {footerScrollable ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+            }}
+          >
+            {visibleTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  onPress={() => setActiveTab(tab.id)}
+                  activeOpacity={0.75}
                   style={{
-                    fontSize: theme.tabLabelSize,
-                    marginTop: theme.spacingXs,
-                    fontWeight: '500',
-                    textAlign: 'center',
-                    color: isActive ? '#1e3a8a' : '#475569',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingVertical: 6,
+                    paddingHorizontal: 12,
+                    minWidth: theme.tabItemMinWidth,
+                    backgroundColor: isActive ? 'rgba(30, 64, 175, 0.08)' : 'transparent',
+                    borderRadius: 12,
                   }}
-                  allowFontScaling={true}
                 >
-                  {tab.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+                  <Icon size={theme.tabIconSize} color={isActive ? '#1E40AF' : '#64748B'} strokeWidth={isActive ? 2.5 : 2} />
+                  <Text style={{ fontSize: theme.tabLabelSize, marginTop: theme.spacingXs, fontWeight: '500', color: isActive ? '#1e3a8a' : '#475569' }}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: footerJustify,
+              flexWrap: 'nowrap',
+            }}
+          >
+            {visibleTabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  onPress={() => setActiveTab(tab.id)}
+                  activeOpacity={0.75}
+                  style={{
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    paddingVertical: 6,
+                    paddingHorizontal: 12,
+                    minWidth: theme.tabItemMinWidth,
+                    backgroundColor: isActive ? 'rgba(30, 64, 175, 0.08)' : 'transparent',
+                    borderRadius: 12,
+                  }}
+                >
+                  <Icon size={theme.tabIconSize} color={isActive ? '#1E40AF' : '#64748B'} strokeWidth={isActive ? 2.5 : 2} />
+                  <Text style={{ fontSize: theme.tabLabelSize, marginTop: theme.spacingXs, fontWeight: '500', color: isActive ? '#1e3a8a' : '#475569' }}>
+                    {tab.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );

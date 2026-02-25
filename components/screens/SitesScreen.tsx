@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, Modal, TextInput, Pressable } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Alert, Modal, TextInput, Pressable, Keyboard } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/ui/Header';
 import { SiteCard } from '@/components/sites/SiteCard';
 import { SiteDetailScreen } from '@/components/screens/SiteDetailScreen';
 import { useAuth } from '@/context/AuthContext';
+import { useLocale } from '@/context/LocaleContext';
 import { useMockAppStore } from '@/context/MockAppStoreContext';
 import { useResponsiveTheme } from '@/theme/responsive';
 import { generateId } from '@/lib/id';
@@ -12,6 +13,7 @@ import { Plus } from 'lucide-react-native';
 
 export function SitesScreen() {
   const { user } = useAuth();
+  const { t } = useLocale();
   const theme = useResponsiveTheme();
   const { sites, updateSite, addSite, loading } = useMockAppStore();
   const isHeadSupervisor = user?.role === 'head_supervisor';
@@ -33,14 +35,14 @@ export function SitesScreen() {
   const handleConfirmBudget = async () => {
     const amount = parseInt(amountRwf, 10);
     if (!allocateSiteId || isNaN(amount) || amount <= 0) {
-      Alert.alert('Invalid input', 'Select a site and enter a valid amount in RWF.');
+      Alert.alert(t('sites_invalid_input_title'), t('sites_invalid_input'));
       return;
     }
     try {
       await updateSite(allocateSiteId, { budget: amount });
       setBudgetModalVisible(false);
     } catch {
-      Alert.alert('Error', 'Failed to update budget');
+      Alert.alert(t('sites_error_title'), t('sites_budget_update_failed'));
     }
   };
 
@@ -57,7 +59,7 @@ export function SitesScreen() {
     const name = newSiteName.trim();
     const location = newSiteLocation.trim();
     if (!name || !location) {
-      Alert.alert('Required fields', 'Site name and location are required.');
+      Alert.alert(t('sites_required_fields_title'), t('sites_required_fields'));
       return;
     }
     const budget = parseInt(newSiteBudget, 10) || 0;
@@ -75,7 +77,7 @@ export function SitesScreen() {
       });
       setCreateSiteModalVisible(false);
     } catch {
-      Alert.alert('Error', 'Failed to create site');
+      Alert.alert(t('sites_error_title'), t('sites_create_failed'));
     }
   };
 
@@ -91,23 +93,28 @@ export function SitesScreen() {
   return (
     <View className="flex-1 bg-gray-50">
       <Header
-        title="Sites"
-        subtitle="Manage site locations and budget"
+        title={t('sites_title')}
+        subtitle={t('sites_subtitle')}
         rightAction={
           isHeadSupervisor ? (
             <TouchableOpacity
               onPress={handleAllocateBudget}
               className="bg-blue-600 rounded-lg px-4 py-2 flex-row items-center mr-2"
             >
-              <Text className="text-white font-semibold">Allocate budget</Text>
+              <Text className="text-white font-semibold">{t('sites_allocate_budget')}</Text>
             </TouchableOpacity>
           ) : null
         }
       />
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: theme.screenPadding }}>
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ padding: theme.screenPadding }}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={() => Keyboard.dismiss()}
+      >
         {loading ? (
           <Card className="py-8">
-            <Text className="text-center text-gray-600">Loading sites...</Text>
+            <Text className="text-center text-gray-600">{t('sites_loading')}</Text>
           </Card>
         ) : (
           <>
@@ -118,14 +125,14 @@ export function SitesScreen() {
                 <View className="w-10 h-10 bg-blue-100 rounded-lg items-center justify-center mr-3">
                   <Plus size={20} color="#2563EB" />
                 </View>
-                <Text className="text-blue-700 font-semibold">Create new site location</Text>
+                <Text className="text-blue-700 font-semibold">{t('sites_create_new_site')}</Text>
               </View>
             </Card>
           </TouchableOpacity>
         )}
 
         <View className="mb-4">
-          <Text className="text-lg font-bold text-gray-900 mb-3">All sites</Text>
+          <Text className="text-lg font-bold text-gray-900 mb-3">{t('sites_all_sites')}</Text>
           {sites.map((site) => (
             <SiteCard key={site.id} site={site} onPress={() => setDetailSiteId(site.id)} />
           ))}
@@ -137,35 +144,35 @@ export function SitesScreen() {
       <Modal visible={createSiteModalVisible} transparent animationType="slide">
         <View className="flex-1 justify-end bg-black/50">
           <View className="bg-white rounded-t-2xl p-6">
-            <Text className="text-lg font-bold mb-4">Create site location</Text>
-            <Text className="text-sm text-gray-600 mb-1">Site name</Text>
+            <Text className="text-lg font-bold mb-4">{t('sites_create_site_modal_title')}</Text>
+            <Text className="text-sm text-gray-600 mb-1">{t('sites_site_name')}</Text>
             <TextInput
               value={newSiteName}
               onChangeText={setNewSiteName}
-              placeholder="e.g. Kigali-Rwamagana Highway"
+              placeholder={t('sites_name_placeholder')}
               className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white"
             />
-            <Text className="text-sm text-gray-600 mb-1">Location</Text>
+            <Text className="text-sm text-gray-600 mb-1">{t('sites_location')}</Text>
             <TextInput
               value={newSiteLocation}
               onChangeText={setNewSiteLocation}
-              placeholder="e.g. Eastern Province"
+              placeholder={t('sites_location_placeholder')}
               className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white"
             />
-            <Text className="text-sm text-gray-600 mb-1">Initial budget (RWF, optional)</Text>
+            <Text className="text-sm text-gray-600 mb-1">{t('sites_initial_budget_optional')}</Text>
             <TextInput
               value={newSiteBudget}
               onChangeText={setNewSiteBudget}
-              placeholder="e.g. 5000000"
+              placeholder={t('sites_budget_placeholder')}
               keyboardType="number-pad"
               className="border border-gray-300 rounded-lg px-3 py-2 mb-4 bg-white"
             />
             <View className="flex-row gap-3">
               <TouchableOpacity onPress={() => setCreateSiteModalVisible(false)} className="flex-1 py-3 rounded-lg bg-gray-200 items-center">
-                <Text className="font-semibold text-gray-700">Cancel</Text>
+                <Text className="font-semibold text-gray-700">{t('general_cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleConfirmCreateSite} className="flex-1 py-3 rounded-lg bg-blue-600 items-center">
-                <Text className="font-semibold text-white">Create</Text>
+                <Text className="font-semibold text-white">{t('sites_add_site')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -175,8 +182,8 @@ export function SitesScreen() {
       <Modal visible={budgetModalVisible} transparent animationType="slide">
         <View className="flex-1 justify-center bg-black/50 px-4">
           <View className="bg-white rounded-2xl p-6">
-            <Text className="text-lg font-bold mb-4">Allocate budget (RWF)</Text>
-            <Text className="text-sm text-gray-600 mb-2">Select site</Text>
+            <Text className="text-lg font-bold mb-4">{t('sites_allocate_budget_modal_title')}</Text>
+            <Text className="text-sm text-gray-600 mb-2">{t('sites_select_site')}</Text>
             <View className="flex-row flex-wrap gap-2 mb-4">
               {sites.map((s) => (
                 <Pressable
@@ -190,11 +197,11 @@ export function SitesScreen() {
                 </Pressable>
               ))}
             </View>
-            <Text className="text-sm text-gray-600 mb-1">Amount (RWF)</Text>
+            <Text className="text-sm text-gray-600 mb-1">{t('sites_amount_rwf')}</Text>
             <TextInput
               value={amountRwf}
               onChangeText={setAmountRwf}
-              placeholder="e.g. 5000000"
+              placeholder={t('sites_budget_placeholder')}
               keyboardType="number-pad"
               className="border border-gray-300 rounded-lg px-3 py-2 mb-4 bg-white"
             />
@@ -203,13 +210,13 @@ export function SitesScreen() {
                 onPress={() => setBudgetModalVisible(false)}
                 className="flex-1 py-3 rounded-lg bg-gray-200 items-center"
               >
-                <Text className="font-semibold text-gray-700">Cancel</Text>
+                <Text className="font-semibold text-gray-700">{t('general_cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleConfirmBudget}
                 className="flex-1 py-3 rounded-lg bg-blue-600 items-center"
               >
-                <Text className="font-semibold text-white">Confirm</Text>
+                <Text className="font-semibold text-white">{t('common_confirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>

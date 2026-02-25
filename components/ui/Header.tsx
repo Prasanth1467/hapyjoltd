@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, Text } from 'react-native';
-import { useResponsiveTheme } from '@/theme/responsive';
+import { View, Text, StyleSheet } from 'react-native';
+import { colors, layout, typography } from '@/theme/tokens';
 
 interface HeaderProps {
   title: string;
@@ -10,20 +10,44 @@ interface HeaderProps {
 }
 
 export function Header({ title, subtitle, leftAction, rightAction }: HeaderProps) {
-  const { screenPadding, spacingMd } = useResponsiveTheme();
   return (
-    <View
-      className="bg-white border-b border-slate-200/80 shadow-[0_1px_3px_rgba(0,0,0,0.04)]"
-      style={{ paddingHorizontal: screenPadding, paddingVertical: spacingMd }}
-    >
-      <View className="flex-row items-center justify-between">
-        {leftAction && <View className="mr-3">{leftAction}</View>}
-        <View className="flex-1 min-w-0">
-          <Text className="text-lg font-bold text-slate-900">{title}</Text>
-          {subtitle ? <Text className="text-sm text-slate-500 mt-0.5">{subtitle}</Text> : null}
+    <View style={styles.header}>
+      <View style={styles.row}>
+        {leftAction && <View style={styles.leftAction}>{leftAction}</View>}
+        <View style={styles.titleWrap}>
+          <Text style={styles.title}>{title}</Text>
+          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         </View>
-        {rightAction && <View className="ml-3 shrink-0">{rightAction}</View>}
+        {rightAction && <View style={styles.rightAction}>{rightAction}</View>}
       </View>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  header: {
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    paddingHorizontal: layout.screenPaddingHorz,
+    paddingVertical: layout.grid,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  leftAction: { marginRight: 12 },
+  titleWrap: { flex: 1, minWidth: 0 },
+  title: {
+    fontSize: typography.h2.fontSize,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  subtitle: {
+    fontSize: typography.caption.fontSize,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  rightAction: { marginLeft: 12 },
+});

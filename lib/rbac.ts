@@ -14,9 +14,9 @@ const TAB_ACCESS: Record<TabId, UserRole[]> = {
   tasks: ['assistant_supervisor', 'driver_truck', 'driver_machine'],
   users: ['admin', 'owner', 'head_supervisor'],
   sites: ['admin', 'head_supervisor'],
-  vehicles: ['admin', 'owner', 'head_supervisor'],
+  vehicles: ['admin', 'owner', 'head_supervisor', 'assistant_supervisor'],
   expenses: ['assistant_supervisor'],
-  surveys: ['assistant_supervisor', 'surveyor'],
+  surveys: ['admin', 'owner', 'head_supervisor', 'assistant_supervisor', 'surveyor'],
   issues: ['owner', 'head_supervisor', 'assistant_supervisor', 'driver_truck', 'driver_machine'],
   gps_camera: ['driver_truck', 'driver_machine', 'assistant_supervisor'],
   settings: ['admin', 'owner', 'head_supervisor', 'accountant', 'assistant_supervisor', 'surveyor', 'driver_truck', 'driver_machine'],
@@ -65,17 +65,33 @@ export function canSeeFinancialSummary(role: UserRole): boolean {
   return role === 'admin' || role === 'owner' || role === 'head_supervisor' || role === 'accountant';
 }
 
-const ROLE_LABELS: Record<UserRole, string> = {
-  admin: 'Admin',
-  owner: 'Owner',
-  head_supervisor: 'Head Supervisor',
-  accountant: 'Accountant',
-  assistant_supervisor: 'Assistant Supervisor',
-  surveyor: 'Surveyor',
-  driver_truck: 'Driver – Truck',
-  driver_machine: 'Driver – Machine',
+/** Translation key for role display label (use with t(key) for i18n). */
+const ROLE_LABEL_KEYS: Record<UserRole, string> = {
+  admin: 'role_admin',
+  owner: 'role_owner',
+  head_supervisor: 'role_head_supervisor',
+  accountant: 'role_accountant',
+  assistant_supervisor: 'role_assistant_supervisor',
+  surveyor: 'role_surveyor',
+  driver_truck: 'role_driver_truck',
+  driver_machine: 'role_driver_machine',
 };
 
+export function getRoleLabelKey(role: UserRole): string {
+  return ROLE_LABEL_KEYS[role] ?? role;
+}
+
+/** English fallback when t() not available (e.g. scripts). Prefer t(getRoleLabelKey(role)) in UI. Use "Operator" for machine (not Driver–Machine) per docs. */
 export function getRoleDisplayLabel(role: UserRole): string {
-  return ROLE_LABELS[role] ?? role;
+  const labels: Record<UserRole, string> = {
+    admin: 'Admin',
+    owner: 'Owner',
+    head_supervisor: 'Head Supervisor',
+    accountant: 'Accountant',
+    assistant_supervisor: 'Assistant Supervisor',
+    surveyor: 'Surveyor',
+    driver_truck: 'Driver – Truck',
+    driver_machine: 'Operator',
+  };
+  return labels[role] ?? role;
 }

@@ -13,6 +13,7 @@ import type {
   Task,
   Operation,
   Report,
+  Notification,
 } from '@/types';
 import { supabase } from '@/lib/supabase';
 import {
@@ -29,6 +30,7 @@ import {
   operationFromRow,
   reportFromRow,
   profileFromRow,
+  notificationFromRow,
   siteToRow,
   vehicleToRow,
   expenseToRow,
@@ -37,9 +39,9 @@ import {
   surveyToRow,
   issueToRow,
   taskToRow,
-  operationToRow,
   reportToRow,
   profileToRow,
+  notificationToRow,
 } from '@/lib/supabaseMappers';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -48,6 +50,7 @@ import {
   appendToOfflineQueue,
   type QueuedItem,
 } from '@/lib/offlineQueue';
+import { generateId } from '@/lib/id';
 
 export interface MockAppStoreState {
   sites: Site[];
@@ -64,6 +67,7 @@ export interface MockAppStoreState {
   tasks: Task[];
   operations: Operation[];
   reports: Report[];
+  notifications: Notification[];
 }
 
 type SetSites = (sites: Site[] | ((prev: Site[]) => Site[])) => void;
@@ -116,6 +120,12 @@ export interface MockAppStoreContextValue extends MockAppStoreState {
   setDriverVehicleAssignment: (siteId: string, driverId: string, vehicleIds: string[]) => Promise<void>;
   updateTask: (id: string, patch: Partial<Task>) => Promise<void>;
   addReport: (report: Report) => Promise<void>;
+  updateReport: (id: string, patch: Partial<Report>) => Promise<void>;
+  notifications: Notification[];
+  addNotification: (n: Omit<Notification, 'createdAt' | 'read'>) => Promise<void>;
+  markNotificationRead: (id: string) => Promise<void>;
+  /** Hard-delete all notifications for current user's role (clear all). */
+  clearAllNotifications: () => Promise<void>;
 }
 
 const defaultContractRate = 500;
@@ -135,6 +145,7 @@ const emptyState: MockAppStoreState = {
   tasks: [],
   operations: [],
   reports: [],
+  notifications: [],
 };
 
 const MockAppStoreContext = createContext<MockAppStoreContextValue | null>(null);
@@ -211,6 +222,22 @@ function useSupabaseStore(): MockAppStoreContextValue {
 
       const contractRateRwf = sites.length > 0 && sites[0].contractRateRwf != null ? sites[0].contractRateRwf : defaultContractRate;
 
+      let notifications: Notification[] = [];
+      const currentUserRole = users.find((u) => u.id === authUser.id)?.role;
+      if (currentUserRole) {
+        try {
+          const notifRes = await supabase
+            .from('notifications')
+            .select('*')
+            .eq('target_role', currentUserRole)
+            .order('created_at', { ascending: false })
+            .limit(50);
+          notifications = (notifRes.data ?? []).map((r) => notificationFromRow(r as Record<string, unknown>));
+        } catch {
+          // Table may not exist until migration 20250223100000_notifications is run
+        }
+      }
+
       setState({
         sites,
         vehicles,
@@ -226,13 +253,14 @@ function useSupabaseStore(): MockAppStoreContextValue {
         tasks,
         operations,
         reports,
+        notifications,
       });
-    } catch (_e) {
+    } catch {
       // keep previous state on error
     } finally {
       setLoading(false);
     }
-  }, [authUser?.id]);
+  }, [authUser]);
 
   useEffect(() => {
     refetch();
@@ -256,13 +284,14 @@ function useSupabaseStore(): MockAppStoreContextValue {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, () => refetch())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => refetch())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'gps_photos' }, () => refetch())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => refetch())
       .subscribe();
     channelRef.current = channel;
     return () => {
       supabase.removeChannel(channel);
       channelRef.current = null;
     };
-  }, [authUser?.id, refetch]);
+  }, [authUser, refetch]);
 
   const setSites: SetSites = useCallback((arg) => {
     setState((prev) => ({ ...prev, sites: typeof arg === 'function' ? arg(prev.sites) : arg }));
@@ -304,26 +333,30 @@ function useSupabaseStore(): MockAppStoreContextValue {
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('sites').update(row).eq('id', id);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const addSite = useCallback(async (site: Site) => {
     const row = siteToRow(site);
     const { error } = await supabase.from('sites').insert(row);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const addVehicle = useCallback(async (vehicle: Vehicle) => {
     const row = vehicleToRow(vehicle);
     const { error } = await supabase.from('vehicles').insert(row);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const updateVehicle = useCallback(async (id: string, patch: Partial<Vehicle>) => {
     const row = vehicleToRow(patch);
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('vehicles').update(row).eq('id', id);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const addExpense = useCallback(async (expense: Expense) => {
     const row = expenseToRow(expense);
@@ -333,7 +366,8 @@ function useSupabaseStore(): MockAppStoreContextValue {
       setState((prev) => ({ ...prev, expenses: [...prev.expenses, expense] }));
       return;
     }
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const addTrip = useCallback(async (trip: Trip) => {
     const row = tripToRow(trip);
@@ -343,53 +377,73 @@ function useSupabaseStore(): MockAppStoreContextValue {
       setState((prev) => ({ ...prev, trips: [...prev.trips, trip] }));
       return;
     }
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const updateTrip = useCallback(async (id: string, patch: Partial<Trip>) => {
     const row = tripToRow(patch);
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('trips').update(row).eq('id', id);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const addMachineSession = useCallback(async (session: MachineSession) => {
     const row = machineSessionToRow(session);
     const { error } = await supabase.from('machine_sessions').insert(row);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const updateMachineSession = useCallback(async (id: string, patch: Partial<MachineSession>) => {
     const row = machineSessionToRow(patch);
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('machine_sessions').update(row).eq('id', id);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const addSurvey = useCallback(async (survey: Survey) => {
     const row = surveyToRow(survey);
     const { error } = await supabase.from('surveys').insert(row);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const updateSurvey = useCallback(async (id: string, patch: Partial<Survey>) => {
     const row = surveyToRow(patch);
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('surveys').update(row).eq('id', id);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const addIssue = useCallback(async (issue: Issue) => {
     const row = issueToRow(issue);
     const { error } = await supabase.from('issues').insert(row);
     if (error) throw error;
-  }, []);
+    const title = 'New issue reported';
+    const body = (issue.siteName ? `[${issue.siteName}] ` : '') + (issue.description?.slice(0, 120) || 'No description');
+    for (const targetRole of ['owner', 'head_supervisor', 'assistant_supervisor']) {
+      await supabase.from('notifications').insert({
+        id: generateId('n'),
+        target_role: targetRole,
+        title,
+        body,
+        link_id: issue.id,
+        link_type: 'issue',
+      });
+    }
+    await refetch();
+  }, [refetch]);
 
   const updateIssue = useCallback(async (id: string, patch: Partial<Issue>) => {
     const row = issueToRow(patch);
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('issues').update(row).eq('id', id);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const setSiteAssignment = useCallback(async (siteId: string, assignment: Partial<SiteAssignment> & { role: string }) => {
     const userId = assignment.userId ?? '';
@@ -397,13 +451,15 @@ function useSupabaseStore(): MockAppStoreContextValue {
     const row = { site_id: siteId, user_id: userId, role: assignment.role, vehicle_ids: assignment.vehicleIds ?? [] };
     const { error } = await supabase.from('site_assignments').upsert(row, { onConflict: 'site_id,user_id' });
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const addUser = useCallback(async (newUser: User) => {
     const row = { id: newUser.id, ...profileToRow(newUser) };
     const { error } = await supabase.from('profiles').upsert(row, { onConflict: 'id' });
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const createUserByOwner = useCallback(
     async (params: {
@@ -445,12 +501,13 @@ function useSupabaseStore(): MockAppStoreContextValue {
       const result = data as { email?: string; temporary_password?: string; error?: string };
       if (result?.error) throw new Error(result.error);
       if (!result?.temporary_password) throw new Error('Invalid response from server');
+      await refetch();
       return {
         email: result.email,
         temporary_password: result.temporary_password,
       };
     },
-    []
+    [refetch]
   );
 
   const updateUser = useCallback(async (id: string, patch: Partial<User>) => {
@@ -458,26 +515,62 @@ function useSupabaseStore(): MockAppStoreContextValue {
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('profiles').update(row).eq('id', id);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const setDriverVehicleAssignment = useCallback(async (siteId: string, driverId: string, vehicleIds: string[]) => {
     const row = { site_id: siteId, driver_id: driverId, vehicle_ids: vehicleIds };
     const { error } = await supabase.from('driver_vehicle_assignments').upsert(row, { onConflict: 'site_id,driver_id' });
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const updateTask = useCallback(async (id: string, patch: Partial<Task>) => {
     const row = taskToRow(patch);
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('tasks').update(row).eq('id', id);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
 
   const addReport = useCallback(async (report: Report) => {
     const row = reportToRow(report);
     const { error } = await supabase.from('reports').insert(row);
     if (error) throw error;
-  }, []);
+    await refetch();
+  }, [refetch]);
+
+  const updateReport = useCallback(async (id: string, patch: Partial<Report>) => {
+    const row = reportToRow(patch);
+    if (Object.keys(row).length === 0) return;
+    const { error } = await supabase.from('reports').update(row).eq('id', id);
+    if (error) throw error;
+    await refetch();
+  }, [refetch]);
+
+  const addNotification = useCallback(async (n: Omit<Notification, 'createdAt' | 'read'>) => {
+    const row = notificationToRow({ ...n, read: false });
+    const { error } = await supabase.from('notifications').insert(row);
+    if (error) throw error;
+    await refetch();
+  }, [refetch]);
+
+  const markNotificationRead = useCallback(async (id: string) => {
+    const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+    if (error) throw error;
+    await refetch();
+  }, [refetch]);
+
+  const clearAllNotifications = useCallback(async () => {
+    const role = state.users.find((u) => u.id === authUser?.id)?.role;
+    if (!role) return;
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('target_role', role);
+    if (error) throw error;
+    await refetch();
+  }, [authUser?.id, state.users, refetch]);
 
   const value = useMemo<MockAppStoreContextValue>(
     () => ({
@@ -514,6 +607,10 @@ function useSupabaseStore(): MockAppStoreContextValue {
       setDriverVehicleAssignment,
       updateTask,
       addReport,
+      updateReport,
+      addNotification,
+      markNotificationRead,
+      clearAllNotifications,
     }),
     [
       state,
@@ -549,6 +646,10 @@ function useSupabaseStore(): MockAppStoreContextValue {
       setDriverVehicleAssignment,
       updateTask,
       addReport,
+      updateReport,
+      addNotification,
+      markNotificationRead,
+      clearAllNotifications,
     ]
   );
 

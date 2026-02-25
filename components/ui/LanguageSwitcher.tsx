@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TouchableOpacity, Text, Modal, Pressable, View } from 'react-native';
+import { TouchableOpacity, Text, Modal, Pressable } from 'react-native';
 import { Globe } from 'lucide-react-native';
 import { useLocale } from '@/context/LocaleContext';
 

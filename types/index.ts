@@ -17,17 +17,28 @@ export interface User {
   phone?: string;
   profileImage?: string;
   active: boolean;
+  /** Last known position (drivers); updated on login/screen focus when not on a trip */
+  lastLat?: number;
+  lastLon?: number;
+  locationUpdatedAt?: string;
 }
 
 export type VehicleType = 'truck' | 'machine';
 
+/** active = available for use; inactive = soft-deleted (no hard delete for head_sup/supervisor). Allocated is derived from driver_vehicle_assignments. */
+export type VehicleStatus = 'active' | 'inactive';
+
 export interface Vehicle {
   id: string;
-  siteId: string;
+  /** Optional. Omitted = free vehicle (not assigned to any site). */
+  siteId?: string;
   type: VehicleType;
   vehicleNumberOrId: string;
   mileageKmPerLitre?: number;
+  /** Machine only: fuel consumption in L/hour (Lt/hour). */
   hoursPerLitre?: number;
+  /** Truck only: load capacity in tons (for rental/customer info). */
+  capacityTons?: number;
   tankCapacityLitre: number;
   fuelBalanceLitre: number;
   idealConsumptionRange?: string;
@@ -35,6 +46,8 @@ export interface Vehicle {
   healthInputs?: string;
   /** Machines: ideal working range */
   idealWorkingRange?: string;
+  /** active | inactive; default active. Head/supervisor cannot hard delete. */
+  status?: VehicleStatus;
 }
 
 export interface Site {
@@ -190,4 +203,15 @@ export interface Report {
   generatedDate: string;
   period: string;
   data: any;
+}
+
+export interface Notification {
+  id: string;
+  targetRole: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  read: boolean;
+  linkId?: string;
+  linkType?: string;
 }

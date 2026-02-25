@@ -1,15 +1,21 @@
 import React from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, useWindowDimensions, StyleSheet } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/ui/Header';
+import { DashboardLayout } from '@/components/ui/DashboardLayout';
+import { useLocale } from '@/context/LocaleContext';
 import { useMockAppStore } from '@/context/MockAppStoreContext';
-import { useResponsiveTheme } from '@/theme/responsive';
+import { colors, layout } from '@/theme/tokens';
 import { formatAmount } from '@/lib/currency';
 import { DollarSign, FileText, Lock, TrendingUp } from 'lucide-react-native';
+import type { DashboardNavProps } from '@/components/RoleBasedDashboard';
 
-export function AccountantDashboard() {
-  const theme = useResponsiveTheme();
-  const { sites, surveys, expenses, contractRateRwf } = useMockAppStore();
+const BREAKPOINT_SMALL = 400;
+
+export function AccountantDashboard(_props: DashboardNavProps = {}) {
+  const { t } = useLocale();
+  const { width } = useWindowDimensions();
+  const { sites, surveys, contractRateRwf } = useMockAppStore();
   const totalBudget = sites.reduce((sum, site) => sum + site.budget, 0);
   const totalSpent = sites.reduce((sum, site) => sum + site.spent, 0);
   const remaining = totalBudget - totalSpent;
@@ -18,71 +24,128 @@ export function AccountantDashboard() {
   const totalCost = totalSpent;
   const profit = revenue - totalCost;
 
+  const isSmall = width < BREAKPOINT_SMALL;
+  const cardContainerStyle = isSmall ? styles.cardColumn : styles.cardRow;
+
+  const metricCards = [
+    { icon: <DollarSign size={24} color="#10B981" />, label: t('dashboard_total_budget'), value: formatAmount(totalBudget, true) },
+    { icon: <DollarSign size={24} color="#8B5CF6" />, label: t('dashboard_total_spent'), value: formatAmount(totalSpent, true) },
+    { icon: <DollarSign size={24} color="#059669" />, label: t('dashboard_remaining'), value: formatAmount(remaining, true) },
+    { icon: <TrendingUp size={24} color="#3B82F6" />, label: t('dashboard_revenue'), value: formatAmount(revenue, true) },
+    { icon: <DollarSign size={24} color="#DC2626" />, label: t('dashboard_profit'), value: formatAmount(profit, true), highlight: profit < 0 },
+  ];
+
   return (
-    <View className="flex-1 bg-gray-50">
-      <Header title="Accountant" subtitle="Read-only financial overview" />
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: theme.screenPadding }}>
-        <Card className="mb-4 bg-blue-50 border border-blue-200">
-          <View className="flex-row items-center py-2">
-            <Lock size={20} color="#2563EB" />
-            <Text className="text-blue-800 font-semibold ml-2">Read-only access</Text>
+    <View style={styles.screen}>
+      <Header title={t('dashboard_accountant_title')} subtitle={t('dashboard_accountant_subtitle')} />
+      <DashboardLayout>
+        <Card style={styles.infoCard}>
+          <View style={styles.cardRowInner}>
+            <Lock size={20} color={colors.primary} />
+            <Text style={styles.infoTitle}>{t('dashboard_read_only_access')}</Text>
           </View>
-          <Text className="text-sm text-blue-700 mt-1">
-            Detailed reports are available in the Reports tab. You can view but not generate or edit.
-          </Text>
+          <Text style={styles.infoHint}>{t('dashboard_read_only_hint')}</Text>
         </Card>
 
-        <View className="mb-4">
-          <Text className="text-lg font-bold text-gray-900 mb-3">Financial summary</Text>
-          <Card className="mb-3">
-            <View className="flex-row items-center mb-2">
-              <DollarSign size={24} color="#10B981" />
-              <Text className="text-base font-semibold text-gray-900 ml-2">Total budget</Text>
-            </View>
-            <Text className="text-2xl font-bold text-slate-900">{formatAmount(totalBudget, true)}</Text>
-          </Card>
-          <Card className="mb-3">
-            <View className="flex-row items-center mb-2">
-              <DollarSign size={24} color="#8B5CF6" />
-              <Text className="text-base font-semibold text-slate-900 ml-2">Total spent</Text>
-            </View>
-            <Text className="text-2xl font-bold text-slate-900">{formatAmount(totalSpent, true)}</Text>
-          </Card>
-          <Card className="mb-3">
-            <View className="flex-row items-center mb-2">
-              <DollarSign size={24} color="#059669" />
-              <Text className="text-base font-semibold text-slate-900 ml-2">Remaining</Text>
-            </View>
-            <Text className="text-2xl font-bold text-green-700">{formatAmount(remaining, true)}</Text>
-          </Card>
-          <Card className="mb-3">
-            <View className="flex-row items-center mb-2">
-              <TrendingUp size={24} color="#3B82F6" />
-              <Text className="text-base font-semibold text-slate-900 ml-2">Revenue</Text>
-            </View>
-            <Text className="text-2xl font-bold text-slate-900">{formatAmount(revenue, true)}</Text>
-          </Card>
-          <Card className="mb-3">
-            <View className="flex-row items-center mb-2">
-              <DollarSign size={24} color="#DC2626" />
-              <Text className="text-base font-semibold text-slate-900 ml-2">Profit</Text>
-            </View>
-            <Text className={`text-2xl font-bold ${profit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-              {formatAmount(profit, true)}
-            </Text>
-          </Card>
+        <Text style={styles.sectionTitle}>{t('dashboard_financial_summary')}</Text>
+        <View style={cardContainerStyle}>
+          {metricCards.map((item, index) => (
+            <Card key={index} style={[styles.metricCard, isSmall && styles.metricCardFull]}>
+              <View style={styles.metricRow}>
+                {item.icon}
+                <Text style={styles.metricLabel}>{item.label}</Text>
+              </View>
+              <Text style={[styles.metricValue, item.highlight && styles.metricValueNegative]}>
+                {item.value}
+              </Text>
+            </Card>
+          ))}
         </View>
 
-        <Card className="bg-gray-50">
-          <View className="flex-row items-center py-2">
-            <FileText size={20} color="#6B7280" />
-            <Text className="text-gray-700 font-medium ml-2">Reports tab</Text>
+        <Card style={styles.reportsCard}>
+          <View style={styles.cardRowInner}>
+            <FileText size={20} color={colors.gray700} />
+            <Text style={styles.reportsTitle}>{t('dashboard_reports_tab')}</Text>
           </View>
-          <Text className="text-sm text-gray-600 mt-1">
-            View fuel cost, expenses, revenue and profit reports in read-only mode.
-          </Text>
+          <Text style={styles.infoHint}>{t('dashboard_reports_tab_hint')}</Text>
         </Card>
-      </ScrollView>
+      </DashboardLayout>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  cardRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginBottom: layout.cardSpacingVertical,
+  },
+  cardColumn: {
+    marginBottom: layout.cardSpacingVertical,
+  },
+  metricCard: {
+    flexBasis: '48%',
+    marginBottom: layout.cardSpacingVertical,
+  },
+  metricCardFull: {
+    flexBasis: '100%',
+  },
+  metricRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  metricLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginLeft: 8,
+  },
+  metricValue: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  metricValueNegative: {
+    color: '#b91c1c',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: layout.grid,
+  },
+  infoCard: {
+    marginBottom: layout.cardSpacingVertical,
+    backgroundColor: colors.blue50,
+    borderColor: colors.blue600,
+  },
+  infoTitle: {
+    color: colors.blue600,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  infoHint: {
+    fontSize: 14,
+    color: colors.textSecondary,
+    marginTop: 4,
+  },
+  cardRowInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reportsCard: {
+    backgroundColor: colors.gray100,
+    marginBottom: layout.cardSpacingVertical,
+  },
+  reportsTitle: {
+    color: colors.gray700,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+});

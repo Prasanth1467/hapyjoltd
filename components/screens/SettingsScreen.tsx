@@ -5,34 +5,37 @@ import { Header } from '@/components/ui/Header';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/context/AuthContext';
 import { useLocale } from '@/context/LocaleContext';
+import { useMockAppStore } from '@/context/MockAppStoreContext';
 import { useResponsiveTheme } from '@/theme/responsive';
 import { getRoleDisplayLabel } from '@/lib/rbac';
 import { DriverProfileScreen } from '@/components/screens/DriverProfileScreen';
 import { supabase } from '@/lib/supabase';
-import { User, Bell, Globe, LogOut, Lock } from 'lucide-react-native';
+import { User, Bell, Globe, LogOut, Lock, Eye, EyeOff } from 'lucide-react-native';
 
 export function SettingsScreen() {
   const { user, logout } = useAuth();
   const { t, locale, setLocale } = useLocale();
+  const { notifications, markNotificationRead, clearAllNotifications } = useMockAppStore();
   const theme = useResponsiveTheme();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [languageModalVisible, setLanguageModalVisible] = useState(false);
-  const [showDriverProfile, setShowDriverProfile] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
-  const isDriver = user?.role === 'driver_truck' || user?.role === 'driver_machine';
 
   const handleChangePassword = async () => {
     const pwd = newPassword.trim();
     const conf = confirmPassword.trim();
     if (pwd.length < 6) {
-      Alert.alert('Invalid', 'Password must be at least 6 characters.');
+      Alert.alert(t('alert_invalid'), t('settings_password_invalid'));
       return;
     }
     if (pwd !== conf) {
-      Alert.alert('Mismatch', 'New password and confirm password do not match.');
+      Alert.alert(t('alert_mismatch'), t('settings_password_mismatch'));
       return;
     }
     setChangingPassword(true);
@@ -42,9 +45,9 @@ export function SettingsScreen() {
       setPasswordModalVisible(false);
       setNewPassword('');
       setConfirmPassword('');
-      Alert.alert('Done', 'Your password has been updated.');
+      Alert.alert(t('alert_done_title'), t('settings_password_updated'));
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to update password.');
+      Alert.alert(t('alert_error'), e instanceof Error ? e.message : t('settings_password_update_failed'));
     } finally {
       setChangingPassword(false);
     }
@@ -67,8 +70,8 @@ export function SettingsScreen() {
 
   const languageLabel = locale === 'en' ? t('settings_language_english') : t('settings_language_kinyarwanda');
 
-  if (showDriverProfile && isDriver) {
-    return <DriverProfileScreen onBack={() => setShowDriverProfile(false)} />;
+  if (showEditProfile) {
+    return <DriverProfileScreen onBack={() => setShowEditProfile(false)} />;
   }
 
   return (
@@ -91,30 +94,18 @@ export function SettingsScreen() {
         </Card>
 
         <View className="mb-4">
-          <Text className="text-lg font-bold text-gray-900 mb-3">Preferences</Text>
-
-          {isDriver && (
-            <Card className="mb-3">
-              <TouchableOpacity onPress={() => setShowDriverProfile(true)} className="flex-row items-center py-2">
-                <View className="w-10 h-10 bg-blue-50 rounded-lg items-center justify-center mr-3">
-                  <User size={20} color="#3B82F6" />
-                </View>
-                <View className="flex-1">
-                  <Text className="text-base font-semibold text-gray-900">Personal info (Name, Email, Phone)</Text>
-                  <Text className="text-xs text-gray-600">View and edit your details</Text>
-                </View>
-              </TouchableOpacity>
-            </Card>
-          )}
+          <Text className="text-lg font-bold text-gray-900 mb-3">{t('settings_preferences')}</Text>
 
           <Card className="mb-3">
-            <TouchableOpacity className="flex-row items-center py-2">
+            <TouchableOpacity onPress={() => setShowEditProfile(true)} className="flex-row items-center py-2">
               <View className="w-10 h-10 bg-blue-50 rounded-lg items-center justify-center mr-3">
                 <User size={20} color="#3B82F6" />
               </View>
               <View className="flex-1">
                 <Text className="text-base font-semibold text-gray-900">{t('settings_edit_profile')}</Text>
-                <Text className="text-xs text-gray-600">Update your personal information</Text>
+                <Text className="text-xs text-gray-600">
+                  {user?.role === 'owner' ? t('settings_update_name_phone') : t('settings_update_phone_only')}
+                </Text>
               </View>
             </TouchableOpacity>
           </Card>
@@ -131,10 +122,46 @@ export function SettingsScreen() {
                 <Text className="text-base font-semibold text-gray-900">{t('settings_notifications')}</Text>
                 <Text className="text-xs text-gray-600">
                   {notificationsEnabled ? t('settings_enabled') : t('settings_disabled')}
+                  {notifications.length > 0 ? ` · ${notifications.filter((n) => !n.read).length} ${t('settings_unread')}` : ''}
                 </Text>
               </View>
             </TouchableOpacity>
           </Card>
+
+          {notifications.length > 0 && (
+            <Card className="mb-3">
+              <View className="flex-row justify-between items-center mb-2">
+                <Text className="text-sm font-bold text-gray-900">{t('settings_in_app_notifications')}</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    Alert.alert(
+                      t('settings_clear_notifications'),
+                      t('settings_clear_notifications_confirm'),
+                      [
+                        { text: t('common_cancel'), style: 'cancel' },
+                        { text: t('common_confirm'), style: 'destructive', onPress: () => clearAllNotifications() },
+                      ]
+                    );
+                  }}
+                  className="bg-red-50 px-3 py-1.5 rounded-lg"
+                >
+                  <Text className="text-sm font-semibold text-red-700">{t('settings_clear_notifications')}</Text>
+                </TouchableOpacity>
+              </View>
+              <View className="max-h-48">
+                {notifications.slice(0, 10).map((n) => (
+                  <TouchableOpacity
+                    key={n.id}
+                    onPress={() => markNotificationRead(n.id)}
+                    className={`py-2 border-b border-gray-100 ${n.read ? 'opacity-70' : ''}`}
+                  >
+                    <Text className="text-sm font-medium text-gray-900">{n.linkType === 'issue' ? t('notification_new_issue') : n.title}</Text>
+                    <Text className="text-xs text-gray-600 mt-0.5" numberOfLines={2}>{n.body}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </Card>
+          )}
 
           <Card className="mb-3">
             <TouchableOpacity
@@ -160,8 +187,8 @@ export function SettingsScreen() {
                 <Lock size={20} color="#475569" />
               </View>
               <View className="flex-1">
-                <Text className="text-base font-semibold text-gray-900">Change password</Text>
-                <Text className="text-xs text-gray-600">Set a new password (e.g. after first login)</Text>
+                <Text className="text-base font-semibold text-gray-900">{t('settings_change_password')}</Text>
+                <Text className="text-xs text-gray-600">{t('settings_change_password_hint')}</Text>
               </View>
             </TouchableOpacity>
           </Card>
@@ -172,16 +199,16 @@ export function SettingsScreen() {
           <Card>
             <View className="py-2">
               <View className="flex-row justify-between mb-2">
-                <Text className="text-sm text-gray-600">Version</Text>
+                <Text className="text-sm text-gray-600">{t('settings_version')}</Text>
                 <Text className="text-sm font-semibold text-gray-900">1.0.0</Text>
               </View>
               <View className="flex-row justify-between mb-2">
-                <Text className="text-sm text-gray-600">Company</Text>
+                <Text className="text-sm text-gray-600">{t('settings_company')}</Text>
                 <Text className="text-sm font-semibold text-gray-900">HapyJo Ltd</Text>
               </View>
               <View className="flex-row justify-between">
-                <Text className="text-sm text-gray-600">Support</Text>
-                <Text className="text-sm font-semibold text-blue-600">support@hapyjo.rw</Text>
+                <Text className="text-sm text-gray-600">{t('settings_support')}</Text>
+                <Text className="text-sm font-semibold text-blue-600">hapyjo.ltd1@gmail.com</Text>
               </View>
             </View>
           </Card>
@@ -221,24 +248,34 @@ export function SettingsScreen() {
       <Modal visible={passwordModalVisible} transparent animationType="slide">
         <View className="flex-1 justify-center bg-black/50 px-4">
           <View className="bg-white rounded-2xl p-6">
-            <Text className="text-lg font-bold mb-2">Change password</Text>
-            <Text className="text-sm text-gray-600 mb-4">Enter your new password and confirm. Use at least 6 characters.</Text>
-            <Text className="text-sm text-gray-700 mb-1">New password</Text>
-            <TextInput
-              value={newPassword}
-              onChangeText={setNewPassword}
-              placeholder="New password"
-              secureTextEntry
-              className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white"
-            />
-            <Text className="text-sm text-gray-700 mb-1">Confirm password</Text>
-            <TextInput
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              placeholder="Re-enter password"
-              secureTextEntry
-              className="border border-gray-300 rounded-lg px-3 py-2 mb-4 bg-white"
-            />
+            <Text className="text-lg font-bold mb-2">{t('settings_change_password_modal_title')}</Text>
+            <Text className="text-sm text-gray-600 mb-4">{t('settings_new_password_confirm_hint')}</Text>
+            <Text className="text-sm text-gray-700 mb-1">{t('settings_new_password_required')}</Text>
+            <View className="flex-row items-center border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white">
+              <TextInput
+                value={newPassword}
+                onChangeText={setNewPassword}
+                placeholder={t('settings_new_password_placeholder')}
+                secureTextEntry={!showNewPassword}
+                className="flex-1 text-base text-gray-900"
+              />
+              <TouchableOpacity onPress={() => setShowNewPassword(!showNewPassword)}>
+                {showNewPassword ? <EyeOff size={20} color="#6B7280" /> : <Eye size={20} color="#6B7280" />}
+              </TouchableOpacity>
+            </View>
+            <Text className="text-sm text-gray-700 mb-1">{t('settings_confirm_password_required')}</Text>
+            <View className="flex-row items-center border border-gray-300 rounded-lg px-3 py-2 mb-4 bg-white">
+              <TextInput
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                placeholder={t('settings_confirm_password_placeholder')}
+                secureTextEntry={!showConfirmPassword}
+                className="flex-1 text-base text-gray-900"
+              />
+              <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
+                {showConfirmPassword ? <EyeOff size={20} color="#6B7280" /> : <Eye size={20} color="#6B7280" />}
+              </TouchableOpacity>
+            </View>
             <View className="flex-row gap-3">
               <TouchableOpacity
                 onPress={() => { setPasswordModalVisible(false); setNewPassword(''); setConfirmPassword(''); }}
@@ -252,7 +289,7 @@ export function SettingsScreen() {
                 disabled={changingPassword}
                 className="flex-1 py-3 rounded-lg bg-blue-600 items-center"
               >
-                <Text className="font-semibold text-white">{changingPassword ? 'Updating…' : 'Update password'}</Text>
+                <Text className="font-semibold text-white">{changingPassword ? t('settings_updating') : t('settings_update_password')}</Text>
               </TouchableOpacity>
             </View>
           </View>

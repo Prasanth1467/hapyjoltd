@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, Platform, Modal } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useLocale } from '@/context/LocaleContext';
 
 /** Format YYYY-MM-DD for display (e.g. "21 Feb 2025") */
 export function formatDateLabel(isoDate: string): string {
@@ -39,12 +40,14 @@ export function DatePickerField({
   value,
   onValueChange,
   label,
-  placeholder = 'Select date',
+  placeholder,
   minimumDate,
   maximumDate,
   className = '',
 }: DatePickerFieldProps) {
+  const { t } = useLocale();
   const [show, setShow] = useState(false);
+  const placeholderText = placeholder ?? t('common_select_date');
   const currentDate = value ? parseDateToLocal(value) : new Date();
 
   const handleChange = (_: unknown, selectedDate?: Date) => {
@@ -67,7 +70,7 @@ export function DatePickerField({
         activeOpacity={0.7}
       >
         <Text className={value ? 'text-gray-900' : 'text-gray-500'}>
-          {value ? formatDateLabel(value) : placeholder}
+          {value ? formatDateLabel(value) : placeholderText}
         </Text>
       </TouchableOpacity>
 
@@ -81,7 +84,7 @@ export function DatePickerField({
             <View className="bg-white rounded-t-2xl p-4">
               <View className="flex-row justify-end mb-2">
                 <TouchableOpacity onPress={() => setShow(false)} className="px-4 py-2">
-                  <Text className="text-blue-600 font-semibold">Done</Text>
+                  <Text className="text-blue-600 font-semibold">{t('alert_done')}</Text>
                 </TouchableOpacity>
               </View>
               <DateTimePicker

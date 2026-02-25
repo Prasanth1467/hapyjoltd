@@ -4,12 +4,12 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Modal,
   TextInput,
   Pressable,
   Image,
   ActivityIndicator,
   Alert,
+  Keyboard,
 } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/ui/Header';
@@ -20,6 +20,11 @@ import { useMockAppStore } from '@/context/MockAppStoreContext';
 import { useResponsiveTheme } from '@/theme/responsive';
 import { generateId } from '@/lib/id';
 import { AlertCircle, Plus, MapPin, Calendar } from 'lucide-react-native';
+import { ModalWithKeyboard } from '@/components/ui/ModalWithKeyboard';
+import { Button } from '@/components/ui/Button';
+import { PressableScale } from '@/components/ui/PressableScale';
+import { modalStyles } from '@/components/ui/modalStyles';
+import { colors, radius } from '@/theme/tokens';
 
 export function IssuesScreen() {
   const { user } = useAuth();
@@ -32,6 +37,7 @@ export function IssuesScreen() {
   const modalMaxHeight = theme.height * theme.modalMaxHeightRatio;
 
   const [raiseModalVisible, setRaiseModalVisible] = useState(false);
+  const [submittingIssue, setSubmittingIssue] = useState(false);
   const [siteId, setSiteId] = useState(sites[0]?.id ?? '');
   const [description, setDescription] = useState('');
   const [filterSiteId, setFilterSiteId] = useState<string | null>(null);
@@ -51,43 +57,49 @@ export function IssuesScreen() {
       if (!result.canceled && result.assets?.length) {
         setImageUris((prev) => [...prev, ...result.assets!.map((a) => a.uri)]);
       }
-    } catch (_) {}
+    } catch { /* user cancelled or picker error */ }
   };
 
   const removeImage = (uri: string) => setImageUris((prev) => prev.filter((u) => u !== uri));
 
-  const submitIssue = () => {
+  const submitIssue = async () => {
     if (!description.trim() || !siteId || !user?.id) return;
     const site = sites.find((s) => s.id === siteId);
-    addIssue({
-      id: generateId('i'),
-      siteId,
-      siteName: site?.name,
-      raisedById: user.id,
-      description: description.trim(),
-      imageUris: [...imageUris],
-      status: 'open',
-      createdAt: new Date().toISOString(),
-    });
-    setRaiseModalVisible(false);
-    setDescription('');
-    setImageUris([]);
-    Alert.alert(t('issues_raise_success_title'), t('issues_raise_success_message'), [{ text: t('common_ok') }]);
+    Keyboard.dismiss();
+    setSubmittingIssue(true);
+    try {
+      await addIssue({
+        id: generateId('i'),
+        siteId,
+        siteName: site?.name,
+        raisedById: user.id,
+        description: description.trim(),
+        imageUris: [...imageUris],
+        status: 'open',
+        createdAt: new Date().toISOString(),
+      });
+      setRaiseModalVisible(false);
+      setDescription('');
+      setImageUris([]);
+      Alert.alert(t('issues_raise_success_title'), t('issues_raise_success_message'), [{ text: t('common_ok') }]);
+    } finally {
+      setSubmittingIssue(false);
+    }
   };
 
   return (
-    <View className="flex-1 bg-gray-50">
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Header
-        title="Issues"
-        subtitle={canViewAll ? 'View and manage issues' : 'Raise an issue'}
+        title={t('issues_title')}
+        subtitle={canViewAll ? t('issues_subtitle_view') : t('issues_subtitle_raise')}
         rightAction={
           canRaise ? (
             <TouchableOpacity
               onPress={() => { setSiteId(sites[0]?.id ?? ''); setDescription(''); setImageUris([]); setRaiseModalVisible(true); }}
               className="bg-blue-600 rounded-lg px-4 py-2 flex-row items-center"
             >
-              <Plus size={18} color="#fff" />
-              <Text className="text-white font-semibold ml-1">Raise issue</Text>
+              <Plus size={18} color={colors.surface} />
+              <Text className="text-white font-semibold ml-1">{t('issues_raise')}</Text>
             </TouchableOpacity>
           ) : null
         }
@@ -96,8 +108,8 @@ export function IssuesScreen() {
       <ScrollView className="flex-1" contentContainerStyle={{ padding: theme.screenPadding }}>
         {loading ? (
           <View className="py-12 items-center">
-            <ActivityIndicator size="large" color="#2563eb" />
-            <Text className="text-gray-600 mt-3">Loading issues...</Text>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text className="text-gray-600 mt-3">{t('issues_loading')}</Text>
           </View>
         ) : (
           <>
@@ -107,7 +119,7 @@ export function IssuesScreen() {
               onPress={() => setFilterSiteId(null)}
               className={`px-3 py-2 rounded-lg ${filterSiteId === null ? 'bg-blue-600' : 'bg-gray-200'}`}
             >
-              <Text className={filterSiteId === null ? 'text-white font-medium' : 'text-gray-700'}>All</Text>
+              <Text className={filterSiteId === null ? 'text-white font-medium' : 'text-gray-700'}>{t('reports_all')}</Text>
             </Pressable>
             {sites.map((s) => (
               <Pressable
@@ -121,9 +133,9 @@ export function IssuesScreen() {
           </View>
         )}
 
-        <Text className="text-lg font-bold text-gray-900 mb-2">{canViewAll ? 'All issues' : 'My issues'}</Text>
+        <Text className="text-lg font-bold text-gray-900 mb-2">{canViewAll ? t('issues_all_issues') : t('issues_my_issues')}</Text>
         {listIssues.length === 0 && (
-          <Text className="text-gray-500 py-4">{canViewAll ? 'No issues reported.' : 'You have not raised any issues.'}</Text>
+          <Text className="text-gray-500 py-4">{canViewAll ? t('issues_none_reported') : t('issues_none_raised')}</Text>
         )}
         {listIssues.map((issue) => (
           <Card key={issue.id} className="mb-3">
@@ -140,7 +152,7 @@ export function IssuesScreen() {
               <Text className="text-xs text-gray-500 ml-1">{issue.createdAt.slice(0, 10)}</Text>
             </View>
             {issue.imageUris.length > 0 && (
-              <Text className="text-xs text-gray-500 mt-1">{issue.imageUris.length} image(s) attached</Text>
+              <Text className="text-xs text-gray-500 mt-1">{issue.imageUris.length} {t('issues_images_attached')}</Text>
             )}
           </Card>
         ))}
@@ -148,44 +160,39 @@ export function IssuesScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={raiseModalVisible} transparent animationType="slide">
-        <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-white rounded-t-2xl p-6 pb-8" style={{ maxHeight: modalMaxHeight }}>
-            <View className="items-center mb-4">
-              <View className="w-12 h-12 rounded-full bg-amber-100 items-center justify-center mb-2">
-                <AlertCircle size={24} color="#d97706" />
-              </View>
-              <Text className="text-xl font-bold text-gray-900 text-center">{t('issues_raise_modal_title')}</Text>
-              <Text className="text-sm text-gray-600 text-center mt-1">{t('issues_raise_modal_subtitle')}</Text>
-            </View>
-            <Text className="text-sm font-medium text-gray-700 mb-1">{t('issues_raise_site_label')}</Text>
-            <View className="flex-row flex-wrap gap-2 mb-4">
-              {sites.map((s) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => setSiteId(s.id)}
-                  className={`px-3 py-2 rounded-lg ${siteId === s.id ? 'bg-blue-600' : 'bg-gray-200'}`}
-                >
-                  <Text className={siteId === s.id ? 'text-white font-medium' : 'text-gray-700'}>{s.name}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text className="text-sm font-medium text-gray-700 mb-1">Description</Text>
-            <TextInput
-              value={description}
-              onChangeText={setDescription}
-              placeholder={t('issues_raise_description_placeholder')}
-              multiline
-              numberOfLines={4}
-              className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white text-gray-900"
-              style={{ minHeight: theme.scale(88) }}
-            />
-            <Text className="text-sm font-medium text-gray-700 mb-1">{t('issues_raise_attach_images')}</Text>
-            <View className="flex-row flex-wrap gap-2 mb-4">
-              <TouchableOpacity onPress={addImage} className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 items-center justify-center bg-gray-50">
-                <Plus size={24} color="#6B7280" />
-                <Text className="text-xs text-gray-500 mt-0.5">Add</Text>
-              </TouchableOpacity>
+      <ModalWithKeyboard
+        visible={raiseModalVisible}
+        onOverlayPress={() => setRaiseModalVisible(false)}
+        submitting={submittingIssue}
+        maxHeightRatio={modalMaxHeight / theme.height}
+        footer={
+          <View style={modalStyles.footer}>
+            <PressableScale onPress={() => setRaiseModalVisible(false)} disabled={submittingIssue} style={[modalStyles.btn, modalStyles.btnSecondary]}>
+              <Text style={modalStyles.btnTextSecondary}>{t('common_cancel')}</Text>
+            </PressableScale>
+            <Button variant="primary" onPress={submitIssue} disabled={!description.trim() || submittingIssue} loading={submittingIssue} style={modalStyles.btn}>
+              {t('issues_raise_submit')}
+            </Button>
+          </View>
+        }
+      >
+        <View style={{ alignItems: 'center', marginBottom: 16 }}>
+          <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: '#fef3c7', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+            <AlertCircle size={24} color="#d97706" />
+          </View>
+          <Text style={[modalStyles.title, { textAlign: 'center' }]}>{t('issues_raise_modal_title')}</Text>
+          <Text style={{ fontSize: 12, color: colors.textSecondary, textAlign: 'center', marginTop: 4 }}>{t('issues_raise_modal_subtitle')}</Text>
+        </View>
+        <Text style={modalStyles.label}>{t('issues_raise_site_label')}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+          {sites.map((s) => (
+            <Pressable key={s.id} onPress={() => setSiteId(s.id)} style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.md, backgroundColor: siteId === s.id ? colors.blue600 : colors.gray200 }}>
+              <Text style={{ color: siteId === s.id ? '#fff' : colors.gray700, fontWeight: '500' }}>{s.name}</Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text style={modalStyles.label}>{t('issues_description')}</Text>
+        <TextInput value={description} onChangeText={setDescription} placeholder={t('issues_raise_description_placeholder')} multiline numberOfLines={4} placeholderTextColor={colors.placeholder} style={[modalStyles.input, { minHeight: theme.scale(88) }]} />
               {imageUris.map((uri) => (
                 <View key={uri} className="relative">
                   <Image source={{ uri }} className="rounded-lg bg-gray-200" style={{ width: thumbnailSize, height: thumbnailSize }} />
@@ -194,22 +201,22 @@ export function IssuesScreen() {
                   </TouchableOpacity>
                 </View>
               ))}
-            </View>
-            <View className="flex-row gap-3">
-              <TouchableOpacity onPress={() => setRaiseModalVisible(false)} className="flex-1 py-3 rounded-lg bg-gray-200 items-center">
-                <Text className="font-semibold text-gray-700">{t('common_cancel')}</Text>
+        <Text style={modalStyles.label}>{t('issues_raise_attach_images')}</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+          <TouchableOpacity onPress={addImage} style={{ width: 64, height: 64, borderRadius: radius.md, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.gray100 }}>
+            <Plus size={24} color={colors.textMuted} />
+            <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>{t('common_add')}</Text>
+          </TouchableOpacity>
+          {imageUris.map((uri) => (
+            <View key={uri} style={{ position: 'relative' }}>
+              <Image source={{ uri }} style={{ width: thumbnailSize, height: thumbnailSize, borderRadius: radius.md, backgroundColor: colors.gray200 }} />
+              <TouchableOpacity onPress={() => removeImage(uri)} style={{ position: 'absolute', top: -4, right: -4, width: 20, height: 20, borderRadius: 10, backgroundColor: '#ef4444', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ color: '#fff', fontSize: 12 }}>×</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                onPress={submitIssue}
-                disabled={!description.trim()}
-                className={`flex-1 py-3 rounded-lg items-center ${description.trim() ? 'bg-blue-600' : 'bg-gray-300'}`}
-              >
-                <Text className={`font-semibold ${description.trim() ? 'text-white' : 'text-gray-500'}`}>{t('issues_raise_submit')}</Text>
-              </TouchableOpacity>
             </View>
-          </View>
+          ))}
         </View>
-      </Modal>
+      </ModalWithKeyboard>
     </View>
   );
 }

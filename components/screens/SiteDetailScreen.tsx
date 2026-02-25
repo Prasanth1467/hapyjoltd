@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/ui/Header';
 import { useMockAppStore } from '@/context/MockAppStoreContext';
 import { useAuth } from '@/context/AuthContext';
+import { useLocale } from '@/context/LocaleContext';
 import { useResponsiveTheme } from '@/theme/responsive';
 import { formatAmount } from '@/lib/currency';
 import type { Site } from '@/types';
@@ -22,9 +23,9 @@ interface SiteDetailScreenProps {
 
 export function SiteDetailScreen({ site, onBack }: SiteDetailScreenProps) {
   const { user } = useAuth();
+  const { t } = useLocale();
   const theme = useResponsiveTheme();
   const {
-    sites,
     vehicles,
     users,
     siteAssignments,
@@ -79,7 +80,7 @@ export function SiteDetailScreen({ site, onBack }: SiteDetailScreenProps) {
         driverIds: driverIds.length ? driverIds : undefined,
         vehicleIds: selectedVehicleIds.length ? selectedVehicleIds : undefined,
       });
-    } catch (_e) {
+    } catch {
       // Error surfaced by store or realtime
     }
   };
@@ -98,27 +99,27 @@ export function SiteDetailScreen({ site, onBack }: SiteDetailScreenProps) {
         leftAction={
           <TouchableOpacity onPress={onBack} className="flex-row items-center">
             <ArrowLeft size={22} color="#2563EB" />
-            <Text className="text-blue-600 font-semibold ml-1">Sites</Text>
+            <Text className="text-blue-600 font-semibold ml-1">{t('tab_sites')}</Text>
           </TouchableOpacity>
         }
       />
 
       <ScrollView className="flex-1" contentContainerStyle={{ padding: theme.screenPadding }}>
         <Card className="mb-4">
-          <Text className="text-sm text-gray-600">Status</Text>
+          <Text className="text-sm text-gray-600">{t('site_detail_status')}</Text>
           <Text className="font-semibold text-gray-900 capitalize">{site.status}</Text>
           <View className="flex-row justify-between mt-2">
-            <Text className="text-sm text-slate-600">Budget: {formatAmount(site.budget, true)}</Text>
-            <Text className="text-sm text-slate-600">Spent: {formatAmount(site.spent, true)}</Text>
+            <Text className="text-sm text-slate-600">{t('sites_budget')}: {formatAmount(site.budget, true)}</Text>
+            <Text className="text-sm text-slate-600">{t('dashboard_spent')}: {formatAmount(site.spent, true)}</Text>
           </View>
         </Card>
 
         {isHeadSupervisor && (
           <>
-            <Text className="text-lg font-bold text-gray-900 mb-2">Assignments</Text>
+            <Text className="text-lg font-bold text-gray-900 mb-2">{t('site_assignments')}</Text>
 
             <Card className="mb-3">
-              <Text className="text-sm text-gray-600 mb-2">Assistant Supervisor</Text>
+              <Text className="text-sm text-gray-600 mb-2">{t('site_assistant_supervisor')}</Text>
               <View className="flex-row flex-wrap gap-2">
                 {assignableByRole.assistant_supervisor.map((u) => (
                   <Pressable
@@ -133,7 +134,7 @@ export function SiteDetailScreen({ site, onBack }: SiteDetailScreenProps) {
             </Card>
 
             <Card className="mb-3">
-              <Text className="text-sm text-gray-600 mb-2">Surveyor</Text>
+              <Text className="text-sm text-gray-600 mb-2">{t('site_surveyor')}</Text>
               <View className="flex-row flex-wrap gap-2">
                 {assignableByRole.surveyor.map((u) => (
                   <Pressable
@@ -148,7 +149,7 @@ export function SiteDetailScreen({ site, onBack }: SiteDetailScreenProps) {
             </Card>
 
             <Card className="mb-3">
-              <Text className="text-sm text-gray-600 mb-2">Driver (Truck)</Text>
+              <Text className="text-sm text-gray-600 mb-2">{t('site_driver_truck')}</Text>
               <View className="flex-row flex-wrap gap-2">
                 {assignableByRole.driver_truck.map((u) => (
                   <Pressable
@@ -163,7 +164,7 @@ export function SiteDetailScreen({ site, onBack }: SiteDetailScreenProps) {
             </Card>
 
             <Card className="mb-3">
-              <Text className="text-sm text-gray-600 mb-2">Driver (Machine)</Text>
+              <Text className="text-sm text-gray-600 mb-2">{t('site_driver_machine')}</Text>
               <View className="flex-row flex-wrap gap-2">
                 {assignableByRole.driver_machine.map((u) => (
                   <Pressable
@@ -177,8 +178,8 @@ export function SiteDetailScreen({ site, onBack }: SiteDetailScreenProps) {
               </View>
             </Card>
 
-            <Card className="mb-3">
-              <Text className="text-sm text-gray-600 mb-2">Vehicles (for this site)</Text>
+<Card className="mb-3">
+            <Text className="text-sm text-gray-600 mb-2">{t('site_vehicles_for_site')}</Text>
               <View className="flex-row flex-wrap gap-2">
                 {siteVehicles.map((v) => (
                   <Pressable
@@ -195,14 +196,14 @@ export function SiteDetailScreen({ site, onBack }: SiteDetailScreenProps) {
             </Card>
 
             <TouchableOpacity onPress={saveAssignments} className="bg-blue-600 rounded-lg py-3 items-center mt-2">
-              <Text className="text-white font-semibold">Save assignments</Text>
+              <Text className="text-white font-semibold">{t('site_save_assignments')}</Text>
             </TouchableOpacity>
           </>
         )}
 
         {!isHeadSupervisor && (
           <Card>
-            <Text className="text-gray-600">Assignment is managed by Head Supervisor.</Text>
+            <Text className="text-gray-600">{t('site_assignment_managed_hint')}</Text>
           </Card>
         )}
       </ScrollView>

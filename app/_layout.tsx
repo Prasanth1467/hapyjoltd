@@ -3,9 +3,8 @@ import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
-import { Text, View } from "react-native";
+import { KeyboardAvoidingView, Text, View, useWindowDimensions } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { useWindowDimensions } from "react-native";
 import "../global.css";
 
 SplashScreen.preventAutoHideAsync();
@@ -56,10 +55,16 @@ export default function RootLayout() {
     <RootErrorBoundary>
       <SafeAreaProvider>
         <ThemeProvider value={DefaultTheme}>
-          <Stack screenOptions={({ route }) => ({ headerShown: !route.name?.startsWith("tempobook") })}>
-            <Stack.Screen name="index" options={{ headerShown: false }} />
-          </Stack>
-          <StatusBar style="auto" />
+          <KeyboardAvoidingView
+            behavior="padding"
+            style={{ flex: 1 }}
+            keyboardVerticalOffset={0}
+          >
+            <Stack screenOptions={({ route }) => ({ headerShown: !route.name?.startsWith("tempobook") })}>
+              <Stack.Screen name="index" options={{ headerShown: false }} />
+            </Stack>
+            <StatusBar style="auto" />
+          </KeyboardAvoidingView>
         </ThemeProvider>
       </SafeAreaProvider>
     </RootErrorBoundary>

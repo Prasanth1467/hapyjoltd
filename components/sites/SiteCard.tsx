@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/Badge';
 import { formatAmount } from '@/lib/currency';
 import { MapPin, DollarSign, TrendingUp } from 'lucide-react-native';
 import { Site } from '@/types';
+import { useLocale } from '@/context/LocaleContext';
 
 interface SiteCardProps {
   site: Site;
@@ -13,6 +14,7 @@ interface SiteCardProps {
 }
 
 export function SiteCard({ site, onPress }: SiteCardProps) {
+  const { t } = useLocale();
   const budgetUtilization = (site.spent / site.budget) * 100;
 
   const statusVariant = {
@@ -37,7 +39,7 @@ export function SiteCard({ site, onPress }: SiteCardProps) {
 
         <View className="mb-3">
           <View className="flex-row justify-between mb-1">
-            <Text className="text-xs text-gray-600">Progress</Text>
+            <Text className="text-xs text-gray-600">{t('site_card_progress')}</Text>
             <Text className="text-xs font-semibold text-gray-900">{site.progress}%</Text>
           </View>
           <ProgressBar progress={site.progress} showLabel={false} />
@@ -45,7 +47,7 @@ export function SiteCard({ site, onPress }: SiteCardProps) {
 
         <View className="flex-row justify-between">
           <View className="flex-1 mr-2">
-            <Text className="text-xs text-gray-600 mb-1">Budget</Text>
+            <Text className="text-xs text-gray-600 mb-1">{t('site_card_budget')}</Text>
             <View className="flex-row items-center">
               <DollarSign size={14} color="#3B82F6" />
               <Text className="text-sm font-semibold text-slate-900 ml-1">
@@ -54,7 +56,7 @@ export function SiteCard({ site, onPress }: SiteCardProps) {
             </View>
           </View>
           <View className="flex-1 ml-2">
-            <Text className="text-xs text-slate-600 mb-1">Spent</Text>
+            <Text className="text-xs text-slate-600 mb-1">{t('site_card_spent')}</Text>
             <View className="flex-row items-center">
               <TrendingUp size={14} color="#10B981" />
               <Text className="text-sm font-semibold text-slate-900 ml-1">

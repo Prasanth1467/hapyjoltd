@@ -2,23 +2,32 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   Modal,
   TextInput,
   Pressable,
   Alert,
+  Keyboard,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  ScrollView,
+  StyleSheet,
 } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/ui/Header';
 import { DatePickerField } from '@/components/ui/DatePickerField';
+import { DashboardLayout } from '@/components/ui/DashboardLayout';
+import { useLocale } from '@/context/LocaleContext';
 import { useMockAppStore } from '@/context/MockAppStoreContext';
-import { useResponsiveTheme } from '@/theme/responsive';
 import { generateId } from '@/lib/id';
-import { formatAmount, formatPerUnit, CURRENCY_SYMBOL } from '@/lib/currency';
+import { formatAmount, formatPerUnit } from '@/lib/currency';
 import { Receipt, Fuel } from 'lucide-react-native';
+import { InfoButton } from '@/components/ui/InfoButton';
+import { colors, layout, form } from '@/theme/tokens';
+import { modalStyles } from '@/components/ui/modalStyles';
 
 export function ExpensesScreen() {
+  const { t } = useLocale();
   const { sites, vehicles, expenses, addExpense } = useMockAppStore();
   const [generalModalVisible, setGeneralModalVisible] = useState(false);
   const [fuelModalVisible, setFuelModalVisible] = useState(false);
@@ -56,7 +65,7 @@ export function ExpensesScreen() {
       setAmountRwf('');
       setDescription('');
     } catch {
-      Alert.alert('Error', 'Failed to add expense');
+      Alert.alert(t('alert_error'), t('expenses_add_failed'));
     }
   };
 
@@ -87,23 +96,26 @@ export function ExpensesScreen() {
       setCostPerLitre('');
       setVehicleId('');
     } catch {
-      Alert.alert('Error', 'Failed to add fuel expense');
+      Alert.alert(t('alert_error'), t('expenses_fuel_failed'));
     }
   };
 
   const getSiteName = (id: string) => sites.find((s) => s.id === id)?.name ?? id;
-  const getVehicleLabel = (id: string) => vehicles.find((v) => v.id === id)?.vehicleNumberOrId ?? id;
+
+  const chip = (selected: boolean) => ({
+    paddingHorizontal: form.inputPadding,
+    paddingVertical: 8,
+    borderRadius: form.inputRadius,
+    backgroundColor: selected ? colors.primary : colors.gray200,
+    minHeight: layout.minTouchHeight,
+    justifyContent: 'center' as const,
+  });
 
   return (
-    <View className="flex-1 bg-gray-50">
-      <Header
-        title="Expenses"
-        subtitle="General and fuel expenses"
-        rightAction={null}
-      />
-
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: theme.screenPadding }}>
-        <View className="flex-row gap-3 mb-4">
+    <View style={expStyles.screen}>
+      <Header title={t('expenses_title')} subtitle={t('expenses_subtitle_full')} rightAction={null} />
+      <DashboardLayout keyboardShouldPersistTaps="handled" onScrollBeginDrag={() => Keyboard.dismiss()}>
+        <View style={expStyles.actionsRow}>
           <TouchableOpacity
             onPress={() => {
               setSiteId(sites[0]?.id ?? '');
@@ -112,10 +124,10 @@ export function ExpensesScreen() {
               setDate(new Date().toISOString().slice(0, 10));
               setGeneralModalVisible(true);
             }}
-            className="flex-1 bg-blue-600 rounded-lg p-4 flex-row items-center"
+            style={expStyles.primaryBtn}
           >
             <Receipt size={24} color="#fff" />
-            <Text className="text-white font-semibold ml-2">Add expense</Text>
+            <Text style={expStyles.primaryBtnText}>{t('expenses_add_expense')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
@@ -125,139 +137,136 @@ export function ExpensesScreen() {
               setCostPerLitre('');
               setFuelModalVisible(true);
             }}
-            className="flex-1 bg-gray-700 rounded-lg p-4 flex-row items-center"
+            style={expStyles.secondaryBtn}
           >
             <Fuel size={24} color="#fff" />
-            <Text className="text-white font-semibold ml-2">Add fuel entry</Text>
+            <Text style={expStyles.primaryBtnText}>{t('expenses_add_fuel')}</Text>
           </TouchableOpacity>
         </View>
 
-        <Text className="text-lg font-bold text-gray-900 mb-2">Recent expenses</Text>
+        <Text style={expStyles.sectionTitle}>{t('expenses_recent')}</Text>
         {expenses.slice(-20).reverse().map((e) => (
-          <Card key={e.id} className="mb-2">
-            <View className="flex-row justify-between items-start">
+          <Card key={e.id} style={expStyles.listCard}>
+            <View style={expStyles.listRow}>
               <View>
-                <Text className="font-semibold text-gray-900">{e.description}</Text>
-                <Text className="text-xs text-gray-500">{getSiteName(e.siteId)} · {e.date}</Text>
+                <Text style={expStyles.listTitle}>{e.description}</Text>
+                <Text style={expStyles.listMeta}>{getSiteName(e.siteId)} · {e.date}</Text>
                 {e.type === 'fuel' && e.litres != null && (
-                  <Text className="text-xs text-slate-500">{e.litres} L @ {e.costPerLitre} {formatPerUnit('L')}</Text>
+                  <Text style={expStyles.listMeta}>{e.litres} L @ {e.costPerLitre} {formatPerUnit('L')}</Text>
                 )}
               </View>
-              <Text className="font-semibold text-slate-900">{formatAmount(e.amountRwf)}</Text>
+              <Text style={expStyles.listAmount}>{formatAmount(e.amountRwf)}</Text>
             </View>
           </Card>
         ))}
-        {expenses.length === 0 && (
-          <Text className="text-gray-500 py-4">No expenses yet.</Text>
-        )}
-      </ScrollView>
+        {expenses.length === 0 && <Text style={expStyles.empty}>{t('expenses_empty')}</Text>}
+      </DashboardLayout>
 
       <Modal visible={generalModalVisible} transparent animationType="slide">
-        <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-white rounded-t-2xl p-6">
-            <Text className="text-lg font-bold mb-4">Add expense ({CURRENCY_SYMBOL})</Text>
-            <Text className="text-sm text-gray-600 mb-1">Site</Text>
-            <View className="flex-row flex-wrap gap-2 mb-3">
-              {sites.map((s) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => setSiteId(s.id)}
-                  className={`px-3 py-2 rounded-lg ${siteId === s.id ? 'bg-blue-600' : 'bg-gray-200'}`}
-                >
-                  <Text className={siteId === s.id ? 'text-white font-medium' : 'text-gray-700'}>{s.name}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text className="text-sm text-slate-600 mb-1">Amount (RWF)</Text>
-            <TextInput
-              value={amountRwf}
-              onChangeText={setAmountRwf}
-              placeholder="e.g. 50000"
-              keyboardType="number-pad"
-              className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white"
-            />
-            <Text className="text-sm text-gray-600 mb-1">Description</Text>
-            <TextInput
-              value={description}
-              onChangeText={setDescription}
-              placeholder="e.g. Labour cost"
-              className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white"
-            />
-            <DatePickerField
-              label="Expense date"
-              value={date}
-              onValueChange={setDate}
-              placeholder="Pick date"
-              className="mb-4"
-            />
-            <View className="flex-row gap-3">
-              <TouchableOpacity onPress={() => setGeneralModalVisible(false)} className="flex-1 py-3 rounded-lg bg-gray-200 items-center">
-                <Text className="font-semibold text-gray-700">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={submitGeneral} className="flex-1 py-3 rounded-lg bg-blue-600 items-center">
-                <Text className="font-semibold text-white">Submit</Text>
-              </TouchableOpacity>
-            </View>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={expStyles.modalOverlay}>
+            <KeyboardAvoidingView behavior="padding" style={expStyles.modalKAV}>
+              <Pressable onPress={(e) => e.stopPropagation()} style={expStyles.modalSheet}>
+                <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                  <Text style={modalStyles.title}>{t('expenses_add_expense_rwf')}</Text>
+                  <Text style={modalStyles.label}>{t('expenses_site_star')}</Text>
+                  <View style={expStyles.chipRow}>
+                    {sites.map((s) => (
+                      <Pressable key={s.id} onPress={() => setSiteId(s.id)} style={chip(siteId === s.id)}>
+                        <Text style={[expStyles.chipText, siteId === s.id && expStyles.chipTextSelected]}>{s.name}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <View style={expStyles.labelRow}>
+                    <Text style={modalStyles.label}>Amount (RWF) *</Text>
+                    <InfoButton title={t('expenses_amount_label')} message={t('expenses_amount_info')} size={16} />
+                  </View>
+                  <TextInput value={amountRwf} onChangeText={setAmountRwf} placeholder={t('expenses_amount_placeholder')} keyboardType="number-pad" style={modalStyles.input} placeholderTextColor={colors.placeholder} />
+                  <Text style={modalStyles.label}>{t('expenses_description_star')}</Text>
+                  <TextInput value={description} onChangeText={setDescription} placeholder={t('expenses_description_placeholder')} style={modalStyles.input} placeholderTextColor={colors.placeholder} />
+                  <DatePickerField label={t('expenses_date_label')} value={date} onValueChange={setDate} placeholder={t('expenses_date_placeholder')} />
+                  <View style={modalStyles.footer}>
+                    <TouchableOpacity onPress={() => setGeneralModalVisible(false)} style={[modalStyles.btn, modalStyles.btnSecondary]}>
+                      <Text style={modalStyles.btnTextSecondary}>{t('common_cancel')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={submitGeneral} style={[modalStyles.btn, expStyles.submitBtn]}>
+                      <Text style={expStyles.submitBtnText}>{t('common_submit')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </Pressable>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       <Modal visible={fuelModalVisible} transparent animationType="slide">
-        <View className="flex-1 justify-end bg-black/50">
-          <View className="bg-white rounded-t-2xl p-6">
-            <Text className="text-lg font-bold mb-4">Add fuel entry</Text>
-            <Text className="text-sm text-gray-600 mb-1">Site</Text>
-            <View className="flex-row flex-wrap gap-2 mb-3">
-              {sites.map((s) => (
-                <Pressable
-                  key={s.id}
-                  onPress={() => { setFuelSiteId(s.id); setVehicleId(vehicles.filter((v) => v.siteId === s.id)[0]?.id ?? ''); }}
-                  className={`px-3 py-2 rounded-lg ${fuelSiteId === s.id ? 'bg-blue-600' : 'bg-gray-200'}`}
-                >
-                  <Text className={fuelSiteId === s.id ? 'text-white font-medium' : 'text-gray-700'}>{s.name}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text className="text-sm text-gray-600 mb-1">Vehicle</Text>
-            <View className="flex-row flex-wrap gap-2 mb-3">
-              {siteVehicles.map((v) => (
-                <Pressable
-                  key={v.id}
-                  onPress={() => setVehicleId(v.id)}
-                  className={`px-3 py-2 rounded-lg ${vehicleId === v.id ? 'bg-blue-600' : 'bg-gray-200'}`}
-                >
-                  <Text className={vehicleId === v.id ? 'text-white font-medium' : 'text-gray-700'}>{v.vehicleNumberOrId}</Text>
-                </Pressable>
-              ))}
-            </View>
-            <Text className="text-sm text-gray-600 mb-1">Litres</Text>
-            <TextInput
-              value={litres}
-              onChangeText={setLitres}
-              placeholder="e.g. 100"
-              keyboardType="decimal-pad"
-              className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white"
-            />
-            <Text className="text-sm text-slate-600 mb-1">Cost per litre (RWF)</Text>
-            <TextInput
-              value={costPerLitre}
-              onChangeText={setCostPerLitre}
-              placeholder="e.g. 1200"
-              keyboardType="decimal-pad"
-              className="border border-gray-300 rounded-lg px-3 py-2 mb-2 bg-white"
-            />
-            <Text className="text-sm text-slate-700 mb-4">Fuel cost = {fuelCost > 0 ? formatAmount(fuelCost) : formatAmount(0)}</Text>
-            <View className="flex-row gap-3">
-              <TouchableOpacity onPress={() => setFuelModalVisible(false)} className="flex-1 py-3 rounded-lg bg-gray-200 items-center">
-                <Text className="font-semibold text-gray-700">Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={submitFuel} className="flex-1 py-3 rounded-lg bg-blue-600 items-center">
-                <Text className="font-semibold text-white">Submit</Text>
-              </TouchableOpacity>
-            </View>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={expStyles.modalOverlay}>
+            <KeyboardAvoidingView behavior="padding" style={expStyles.modalKAV}>
+              <Pressable onPress={(e) => e.stopPropagation()} style={expStyles.modalSheet}>
+                <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                  <Text style={modalStyles.title}>{t('expenses_add_fuel')}</Text>
+                  <Text style={modalStyles.label}>{t('tab_sites')}</Text>
+                  <View style={expStyles.chipRow}>
+                    {sites.map((s) => (
+                      <Pressable key={s.id} onPress={() => { setFuelSiteId(s.id); setVehicleId(vehicles.filter((v) => v.siteId === s.id)[0]?.id ?? ''); }} style={chip(fuelSiteId === s.id)}>
+                        <Text style={[expStyles.chipText, fuelSiteId === s.id && expStyles.chipTextSelected]}>{s.name}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Text style={modalStyles.label}>{t('expenses_vehicle_star')}</Text>
+                  <View style={expStyles.chipRow}>
+                    {siteVehicles.map((v) => (
+                      <Pressable key={v.id} onPress={() => setVehicleId(v.id)} style={chip(vehicleId === v.id)}>
+                        <Text style={[expStyles.chipText, vehicleId === v.id && expStyles.chipTextSelected]}>{v.vehicleNumberOrId}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                  <Text style={modalStyles.label}>{t('expenses_litres_star')}</Text>
+                  <TextInput value={litres} onChangeText={setLitres} placeholder={t('expenses_fuel_placeholder')} keyboardType="decimal-pad" style={modalStyles.input} placeholderTextColor={colors.placeholder} />
+                  <Text style={modalStyles.label}>{t('expenses_cost_per_litre')}</Text>
+                  <TextInput value={costPerLitre} onChangeText={setCostPerLitre} placeholder={t('expenses_cost_placeholder')} keyboardType="decimal-pad" style={modalStyles.input} placeholderTextColor={colors.placeholder} />
+                  <Text style={expStyles.fuelCost}>{t('expenses_fuel_cost_equals')} = {fuelCost > 0 ? formatAmount(fuelCost) : formatAmount(0)}</Text>
+                  <View style={modalStyles.footer}>
+                    <TouchableOpacity onPress={() => setFuelModalVisible(false)} style={[modalStyles.btn, modalStyles.btnSecondary]}>
+                      <Text style={modalStyles.btnTextSecondary}>{t('common_cancel')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={submitFuel} style={[modalStyles.btn, expStyles.submitBtn]}>
+                      <Text style={expStyles.submitBtnText}>{t('common_submit')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </Pressable>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );
 }
+
+const expStyles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
+  actionsRow: { flexDirection: 'row', gap: 12, marginBottom: layout.cardSpacingVertical },
+  primaryBtn: { flex: 1, backgroundColor: colors.primary, borderRadius: form.inputRadius, padding: layout.cardPadding, flexDirection: 'row', alignItems: 'center', minHeight: layout.minTouchHeight },
+  secondaryBtn: { flex: 1, backgroundColor: colors.gray700, borderRadius: form.inputRadius, padding: layout.cardPadding, flexDirection: 'row', alignItems: 'center', minHeight: layout.minTouchHeight },
+  primaryBtnText: { color: '#fff', fontWeight: '600', marginLeft: 8 },
+  sectionTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: layout.grid },
+  listCard: { marginBottom: layout.grid },
+  listRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  listTitle: { fontWeight: '600', color: colors.text },
+  listMeta: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  listAmount: { fontWeight: '600', color: colors.text },
+  empty: { color: colors.textMuted, paddingVertical: layout.cardPadding },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalKAV: { width: '100%' },
+  modalSheet: { backgroundColor: colors.surface, borderTopLeftRadius: layout.cardRadius, borderTopRightRadius: layout.cardRadius, padding: layout.cardPadding, maxHeight: '85%' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  chipText: { color: colors.text, fontWeight: '500', fontSize: form.labelFontSize },
+  chipTextSelected: { color: '#fff' },
+  labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  submitBtn: { backgroundColor: colors.primary },
+  submitBtnText: { color: '#fff', fontWeight: '600' },
+  fuelCost: { fontSize: form.labelFontSize, color: colors.textSecondary, marginBottom: layout.cardPadding },
+});

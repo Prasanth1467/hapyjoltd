@@ -9,8 +9,13 @@ import { AssistantSupervisorDashboard } from '@/components/dashboards/AssistantS
 import { DriverDashboard } from '@/components/dashboards/DriverDashboard';
 import { SurveyorDashboard } from '@/components/dashboards/SurveyorDashboard';
 import { UserRole } from '@/types';
+import type { TabId } from '@/lib/rbac';
 
-const DASHBOARDS: Record<UserRole, React.ComponentType> = {
+export interface DashboardNavProps {
+  onNavigateTab?: (tab: TabId) => void;
+}
+
+const DASHBOARDS: Record<UserRole, React.ComponentType<DashboardNavProps>> = {
   admin: AdminDashboard,
   owner: OwnerDashboard,
   head_supervisor: HeadSupervisorDashboard,
@@ -21,7 +26,7 @@ const DASHBOARDS: Record<UserRole, React.ComponentType> = {
   driver_machine: DriverDashboard,
 };
 
-export function RoleBasedDashboard() {
+export function RoleBasedDashboard({ onNavigateTab }: DashboardNavProps) {
   const { user } = useAuth();
 
   if (!user) {
@@ -30,5 +35,5 @@ export function RoleBasedDashboard() {
 
   const DashboardComponent = DASHBOARDS[user.role];
 
-  return <DashboardComponent />;
+  return <DashboardComponent onNavigateTab={onNavigateTab} />;
 }

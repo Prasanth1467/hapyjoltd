@@ -1,100 +1,131 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, TextInput, Keyboard, StyleSheet } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/ui/Header';
+import { Button } from '@/components/ui/Button';
+import { PressableScale } from '@/components/ui/PressableScale';
 import { useAuth } from '@/context/AuthContext';
+import { useLocale } from '@/context/LocaleContext';
 import { useMockAppStore } from '@/context/MockAppStoreContext';
 import { useResponsiveTheme } from '@/theme/responsive';
 import { User, Mail, Phone } from 'lucide-react-native';
+import { colors, dimensions, radius, spacing, typography } from '@/theme/tokens';
+import { modalStyles } from '@/components/ui/modalStyles';
 
 export function DriverProfileScreen({ onBack }: { onBack?: () => void }) {
+  const { t } = useLocale();
   const { user: authUser, refreshUser } = useAuth();
   const theme = useResponsiveTheme();
-  const { users, updateUser } = useMockAppStore();
+  const { users, updateUser, refetch } = useMockAppStore();
   const storeUser = authUser ? users.find((u) => u.id === authUser.id) : null;
   const user = storeUser ?? authUser;
 
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user?.name ?? '');
   const [phone, setPhone] = useState(user?.phone ?? '');
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
+  const isOwner = user?.role === 'owner';
+  const handleSave = async () => {
     if (!user) return;
-    const updated = { ...user, name: name.trim(), phone: phone.trim() || undefined };
-    updateUser(user.id, { name: updated.name, phone: updated.phone });
-    refreshUser(updated);
-    setEditing(false);
+    const trimmedPhone = phone.trim() || undefined;
+    if (isOwner) {
+      const trimmedName = name.trim();
+      if (!trimmedName) return;
+    }
+    setSaving(true);
+    try {
+      const patch = isOwner ? { name: name.trim(), phone: trimmedPhone } : { phone: trimmedPhone };
+      await updateUser(user.id, patch);
+      await refetch();
+      const updated = { ...user, ...patch };
+      refreshUser(updated);
+      setEditing(false);
+    } catch {
+      // Error already surfaced by store or caller
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!user) return null;
 
   return (
-    <View className="flex-1 bg-gray-50">
+    <View style={driverProfileStyles.screen}>
       <Header
-        title="Personal info"
-        subtitle="Name, email, phone"
+        title={t('profile_personal_info')}
+        subtitle={t('profile_name_email_phone')}
         leftAction={
           onBack ? (
-            <TouchableOpacity onPress={onBack}>
-              <Text className="text-blue-600 font-semibold">Back</Text>
-            </TouchableOpacity>
+            <PressableScale onPress={onBack}>
+              <Text style={driverProfileStyles.backText}>{t('common_back')}</Text>
+            </PressableScale>
           ) : undefined
         }
       />
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: theme.screenPadding }}>
-        <Card className="mb-4">
-          <View className="items-center py-4">
-            <View className="w-20 h-20 bg-blue-100 rounded-full items-center justify-center mb-3">
-              <User size={40} color="#2563EB" />
+      <KeyboardAwareScrollView
+        contentContainerStyle={{ padding: theme.screenPadding, flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={() => Keyboard.dismiss()}
+        showsVerticalScrollIndicator={false}
+      >
+        <Card style={driverProfileStyles.card}>
+          <View style={driverProfileStyles.content}>
+            <View style={driverProfileStyles.avatar}>
+              <User size={dimensions.iconSize * 2} color={colors.primary} />
             </View>
             {!editing ? (
               <>
-                <Text className="text-xl font-bold text-gray-900">{user.name}</Text>
-                <View className="flex-row items-center mt-2">
-                  <Mail size={14} color="#6B7280" />
-                  <Text className="text-sm text-gray-600 ml-2">{user.email}</Text>
+                <Text style={driverProfileStyles.name}>{user.name}</Text>
+                <View style={driverProfileStyles.row}>
+                  <Mail size={dimensions.iconSizeSm} color={colors.textMuted} />
+                  <Text style={driverProfileStyles.mutedText}>{user.email}</Text>
                 </View>
                 {user.phone && (
-                  <View className="flex-row items-center mt-1">
-                    <Phone size={14} color="#6B7280" />
-                    <Text className="text-sm text-gray-600 ml-2">{user.phone}</Text>
+                  <View style={[driverProfileStyles.row, { marginTop: spacing.xs }]}>
+                    <Phone size={dimensions.iconSizeSm} color={colors.textMuted} />
+                    <Text style={driverProfileStyles.mutedText}>{user.phone}</Text>
                   </View>
                 )}
-                <TouchableOpacity onPress={() => { setName(user.name); setPhone(user.phone ?? ''); setEditing(true); }} className="mt-4 bg-blue-600 px-4 py-2 rounded-lg">
-                  <Text className="text-white font-semibold">Edit</Text>
-                </TouchableOpacity>
+                <Button onPress={() => { setName(user.name); setPhone(user.phone ?? ''); setEditing(true); }} style={driverProfileStyles.editBtn}>
+                  {t('profile_edit')}
+                </Button>
               </>
             ) : (
               <>
-                <Text className="text-sm text-gray-600 mb-1 w-full">Name</Text>
-                <TextInput
-                  value={name}
-                  onChangeText={setName}
-                  className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white w-full"
-                />
-                <Text className="text-sm text-gray-600 mb-1 w-full">Email (read-only)</Text>
-                <TextInput value={user.email} editable={false} className="bg-gray-100 rounded-lg px-3 py-2 mb-3 w-full" />
-                <Text className="text-sm text-gray-600 mb-1 w-full">Phone</Text>
-                <TextInput
-                  value={phone}
-                  onChangeText={setPhone}
-                  placeholder="+250 788 000 000"
-                  keyboardType="phone-pad"
-                  className="border border-gray-300 rounded-lg px-3 py-2 mb-4 bg-white w-full"
-                />
-                <View className="flex-row gap-3">
-                  <TouchableOpacity onPress={() => setEditing(false)} className="flex-1 py-2 rounded-lg bg-gray-200 items-center">
-                    <Text className="font-semibold text-gray-700">Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={handleSave} className="flex-1 py-2 rounded-lg bg-blue-600 items-center">
-                    <Text className="font-semibold text-white">Save</Text>
-                  </TouchableOpacity>
+                <Text style={modalStyles.label}>{isOwner ? t('profile_name_star') : t('profile_name')}</Text>
+                <TextInput value={name} onChangeText={setName} editable={isOwner} placeholder={isOwner ? undefined : ''} placeholderTextColor={colors.placeholder} style={[modalStyles.input, !isOwner && driverProfileStyles.inputDisabled]} />
+                <Text style={modalStyles.label}>{t('profile_email_readonly')}</Text>
+                <TextInput value={user.email} editable={false} placeholderTextColor={colors.placeholder} style={[modalStyles.input, driverProfileStyles.inputDisabled]} />
+                <Text style={modalStyles.label}>{t('profile_phone')}</Text>
+                <TextInput value={phone} onChangeText={setPhone} placeholder="+250 788 000 000" keyboardType="phone-pad" placeholderTextColor={colors.placeholder} style={modalStyles.input} />
+                <View style={modalStyles.footer}>
+                  <Button variant="secondary" onPress={() => setEditing(false)} disabled={saving} style={modalStyles.btn}>
+                    {t('common_cancel')}
+                  </Button>
+                  <Button onPress={handleSave} loading={saving} disabled={saving || (isOwner ? !name.trim() : false)} style={modalStyles.btn}>
+                    {saving ? t('profile_saving') : t('profile_save')}
+                  </Button>
                 </View>
               </>
             )}
           </View>
         </Card>
-      </ScrollView>
+      </KeyboardAwareScrollView>
     </View>
   );
 }
+
+const driverProfileStyles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
+  backText: { color: colors.primary, fontWeight: '600', fontSize: typography.body.fontSize },
+  card: { marginBottom: spacing.lg },
+  content: { alignItems: 'center', paddingVertical: spacing.lg },
+  avatar: { width: 80, height: 80, borderRadius: radius.full, backgroundColor: colors.blue50, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
+  name: { fontSize: typography.h2.fontSize, fontWeight: '600', color: colors.text },
+  row: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm },
+  mutedText: { fontSize: typography.body.fontSize, color: colors.textSecondary, marginLeft: spacing.sm },
+  editBtn: { marginTop: spacing.lg },
+  inputDisabled: { backgroundColor: colors.gray100 },
+});

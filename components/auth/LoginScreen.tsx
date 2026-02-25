@@ -8,6 +8,8 @@ import {
   ScrollView,
   Image,
   Alert,
+  TouchableOpacity,
+  StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
@@ -15,15 +17,18 @@ import { useLocale } from '@/context/LocaleContext';
 import { useResponsiveTheme } from '@/theme/responsive';
 import { Button } from '@/components/ui/Button';
 import { LanguageSwitcher } from '@/components/ui/LanguageSwitcher';
+import { Eye, EyeOff } from 'lucide-react-native';
 
 export function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const { t } = useLocale();
   const insets = useSafeAreaInsets();
   const theme = useResponsiveTheme();
+  const topInset = Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight ?? 28) : 0);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -47,8 +52,7 @@ export function LoginScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       className="flex-1 bg-gray-50"
     >
-      {/* Language switcher – top right; responsive padding */}
-      <View style={{ position: 'absolute', top: insets.top + theme.spacingSm, right: theme.screenPadding, zIndex: 10 }}>
+      <View style={{ paddingTop: topInset, paddingHorizontal: theme.screenPadding, paddingBottom: theme.spacingSm, alignItems: 'flex-end' }}>
         <LanguageSwitcher />
       </View>
       <ScrollView
@@ -62,7 +66,7 @@ export function LoginScreen() {
             className="w-40 h-16 mb-4"
             resizeMode="contain"
           />
-          <Text className="text-3xl font-bold text-gray-900">Hapyjo Ltd</Text>
+          <Text className="text-3xl font-bold text-gray-900">{t('login_company_name')}</Text>
           <Text className="text-base text-gray-600 mt-2">{t('login_tagline')}</Text>
         </View>
 
@@ -70,7 +74,7 @@ export function LoginScreen() {
           <Text className="text-xl font-semibold text-gray-900 mb-6">{t('login_title')}</Text>
 
           <View className="mb-4">
-            <Text className="text-sm font-medium text-gray-700 mb-2">{t('login_email')}</Text>
+            <Text className="text-sm font-medium text-gray-700 mb-2">{t('login_email')} *</Text>
             <TextInput
               className="border border-gray-300 rounded-lg px-4 py-3 text-base text-gray-900 bg-white"
               placeholder={t('login_email_placeholder')}
@@ -84,15 +88,20 @@ export function LoginScreen() {
           </View>
 
           <View className="mb-6">
-            <Text className="text-sm font-medium text-gray-700 mb-2">{t('login_password')}</Text>
-            <TextInput
-              className="border border-gray-300 rounded-lg px-4 py-3 text-base text-gray-900 bg-white"
-              placeholder={t('login_password_placeholder')}
-              placeholderTextColor="#9CA3AF"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+            <Text className="text-sm font-medium text-gray-700 mb-2">{t('login_password')} *</Text>
+            <View className="flex-row items-center border border-gray-300 rounded-lg px-4 py-3 bg-white">
+              <TextInput
+                className="flex-1 text-base text-gray-900"
+                placeholder={t('login_password_placeholder')}
+                placeholderTextColor="#9CA3AF"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+              />
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                {showPassword ? <EyeOff size={22} color="#6B7280" /> : <Eye size={22} color="#6B7280" />}
+              </TouchableOpacity>
+            </View>
           </View>
 
           <Button onPress={handleLogin} loading={loading} className="mb-4">

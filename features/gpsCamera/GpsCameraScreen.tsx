@@ -36,47 +36,12 @@ export function GpsCameraScreen({ onBack }: { onBack?: () => void }) {
   const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    supabase.rpc('prune_old_gps_photos').then(() => {}).catch(() => {});
+    void Promise.resolve(supabase.rpc('prune_old_gps_photos')).then(() => {}, () => {});
   }, []);
 
   const openPlayStore = useCallback(() => {
     Linking.openURL(PLAY_STORE_URL);
   }, []);
-
-  const showUploadChoice = useCallback(() => {
-    if (!user?.id) {
-      Alert.alert(t('alert_error'), t('gps_camera_must_sign_in'));
-      return;
-    }
-    Alert.alert(
-      t('gps_camera_app_title'),
-      t('gps_camera_do_you_have_app'),
-      [
-        { text: t('gps_camera_no_download'), onPress: () => showNoAppPopup() },
-        { text: t('gps_camera_yes_upload'), onPress: () => showHasAppAndPickPhoto() },
-        { text: t('common_cancel'), style: 'cancel' },
-      ]
-    );
-  }, [user?.id, t]);
-
-  const showNoAppPopup = useCallback(() => {
-    Alert.alert(
-      t('gps_camera_download_title'),
-      t('gps_camera_download_message'),
-      [
-        { text: t('gps_camera_open_play_store'), onPress: openPlayStore },
-        { text: t('common_ok') },
-      ]
-    );
-  }, [t, openPlayStore]);
-
-  const showHasAppAndPickPhoto = useCallback(() => {
-    Alert.alert(
-      t('gps_camera_capture_title'),
-      t('gps_camera_capture_message'),
-      [{ text: t('common_ok'), onPress: pickAndUploadPhoto }]
-    );
-  }, [t]);
 
   const pickAndUploadPhoto = useCallback(async () => {
     if (!user?.id) return;
@@ -139,7 +104,7 @@ export function GpsCameraScreen({ onBack }: { onBack?: () => void }) {
       const coords = await getCurrentLocation();
       latitude = coords.latitude;
       longitude = coords.longitude;
-    } catch (_e) {
+    } catch {
       /* use fallback 0,0 so we still save the photo */
     }
 
@@ -149,11 +114,11 @@ export function GpsCameraScreen({ onBack }: { onBack?: () => void }) {
         image_url: imageUrl,
         latitude,
         longitude,
-        address: null,
-        city: null,
-        region: null,
-        country: null,
-        postal_code: null,
+        address: undefined,
+        city: undefined,
+        region: undefined,
+        country: undefined,
+        postal_code: undefined,
         captured_at: capturedAt.toISOString(),
       });
     } catch (e) {
@@ -167,6 +132,41 @@ export function GpsCameraScreen({ onBack }: { onBack?: () => void }) {
     setStatus(null);
     Alert.alert(t('alert_done'), t('gps_camera_photo_saved'), [{ text: t('common_ok') }]);
   }, [user?.id, getCurrentLocation, t]);
+
+  const showHasAppAndPickPhoto = useCallback(() => {
+    Alert.alert(
+      t('gps_camera_capture_title'),
+      t('gps_camera_capture_message'),
+      [{ text: t('common_ok'), onPress: pickAndUploadPhoto }]
+    );
+  }, [t, pickAndUploadPhoto]);
+
+  const showNoAppPopup = useCallback(() => {
+    Alert.alert(
+      t('gps_camera_download_title'),
+      t('gps_camera_download_message'),
+      [
+        { text: t('gps_camera_open_play_store'), onPress: openPlayStore },
+        { text: t('common_ok') },
+      ]
+    );
+  }, [t, openPlayStore]);
+
+  const showUploadChoice = useCallback(() => {
+    if (!user?.id) {
+      Alert.alert(t('alert_error'), t('gps_camera_must_sign_in'));
+      return;
+    }
+    Alert.alert(
+      t('gps_camera_app_title'),
+      t('gps_camera_do_you_have_app'),
+      [
+        { text: t('gps_camera_no_download'), onPress: () => showNoAppPopup() },
+        { text: t('gps_camera_yes_upload'), onPress: () => showHasAppAndPickPhoto() },
+        { text: t('common_cancel'), style: 'cancel' },
+      ]
+    );
+  }, [user?.id, t, showHasAppAndPickPhoto, showNoAppPopup]);
 
   return (
     <View style={styles.container}>

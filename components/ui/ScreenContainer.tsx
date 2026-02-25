@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, ScrollView, ScrollViewProps } from 'react-native';
-import { useResponsiveTheme } from '@/theme/responsive';
+import { layout } from '@/theme/tokens';
 
 interface ScreenContainerProps extends Omit<ScrollViewProps, 'contentContainerStyle'> {
   children: React.ReactNode;
@@ -11,8 +11,7 @@ interface ScreenContainerProps extends Omit<ScrollViewProps, 'contentContainerSt
 }
 
 /**
- * Wraps screen content with consistent responsive padding so all phones get
- * appropriate horizontal/vertical spacing. Use for all main screens and dashboards.
+ * Wraps screen content with consistent padding (16px). Use for main screens and forms.
  */
 export function ScreenContainer({
   children,
@@ -20,14 +19,13 @@ export function ScreenContainer({
   contentClassName = '',
   ...scrollProps
 }: ScreenContainerProps) {
-  const { screenPadding } = useResponsiveTheme();
-  const padding = screenPadding;
+  const contentStyle = { paddingHorizontal: layout.screenPaddingHorz, paddingVertical: layout.cardSpacingVertical, flexGrow: 1 };
 
   if (scroll) {
     return (
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ padding, flexGrow: 1 }}
+        contentContainerStyle={contentStyle}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         {...scrollProps}
@@ -38,7 +36,7 @@ export function ScreenContainer({
   }
 
   return (
-    <View className={`flex-1 ${contentClassName}`} style={{ padding }}>
+    <View className={`flex-1 ${contentClassName}`} style={contentStyle}>
       {children}
     </View>
   );

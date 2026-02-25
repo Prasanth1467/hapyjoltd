@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, Pressable, Alert, Linking } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Modal, Pressable, Alert, Linking, Switch, Keyboard } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -8,9 +8,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { useAuth } from '@/context/AuthContext';
 import { useMockAppStore } from '@/context/MockAppStoreContext';
 import { useResponsiveTheme } from '@/theme/responsive';
-import { canCreateUser, getRoleDisplayLabel, getAssignableRoles } from '@/lib/rbac';
-import type { UserRole } from '@/types';
-import { User, Mail, Phone, MapPin, Plus, Search, Copy, MessageCircle } from 'lucide-react-native';
+import { useLocale } from '@/context/LocaleContext';
+import { canCreateUser, getRoleLabelKey, getAssignableRoles } from '@/lib/rbac';
+import type { UserRole, User } from '@/types';
+import { User as UserIcon, Mail, Phone, MapPin, Plus, Search, Copy, MessageCircle, Pencil, KeyRound } from 'lucide-react-native';
+import { InfoButton } from '@/components/ui/InfoButton';
 
 const DOMAIN = 'hapyjo.com';
 
@@ -43,8 +45,9 @@ function generateInternalEmail(name: string, existingEmails: string[]): string {
 
 export function UsersScreen() {
   const { user: currentUser } = useAuth();
+  const { t } = useLocale();
   const theme = useResponsiveTheme();
-  const { users, updateUser, createUserByOwner, resetUserPassword, sites, loading } = useMockAppStore();
+  const { users, updateUser, createUserByOwner, resetUserPassword, setSiteAssignment, sites, loading } = useMockAppStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [newName, setNewName] = useState('');
@@ -54,6 +57,13 @@ export function UsersScreen() {
   const [creating, setCreating] = useState(false);
   const [credentialsModal, setCredentialsModal] = useState<{ email: string; password: string } | null>(null);
   const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [updateModalUser, setUpdateModalUser] = useState<User | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editRole, setEditRole] = useState<UserRole>('assistant_supervisor');
+  const [editSiteId, setEditSiteId] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const existingEmails = useMemo(() => users.map((u) => u.email.toLowerCase()), [users]);
   const generatedEmail = useMemo(
@@ -73,13 +83,13 @@ export function UsersScreen() {
       );
     }
     return users;
-  }, [users, currentUser?.id, currentUser?.role]);
+  }, [users, currentUser]);
 
   const filteredUsers = visibleUsers.filter(
     (u) =>
       u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      getRoleDisplayLabel(u.role).toLowerCase().includes(searchQuery.toLowerCase())
+      t(getRoleLabelKey(u.role)).toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const getRoleBadgeVariant = (role: UserRole): 'success' | 'info' | 'warning' | 'default' => {
@@ -96,31 +106,81 @@ export function UsersScreen() {
     return variants[role] ?? 'default';
   };
 
-  const handleToggleActive = async (u: { id: string; active: boolean }) => {
+  const handleToggleActive = (u: { id: string; active: boolean; name: string }) => {
     if (u.id === currentUser?.id) {
-      Alert.alert('Cannot deactivate yourself', 'You cannot deactivate your own account.');
+      Alert.alert(t('users_cannot_deactivate_self'), t('users_cannot_deactivate_self'));
       return;
     }
+    const newActive = !u.active;
+    Alert.alert(
+      newActive ? t('users_alert_activate') : t('users_alert_deactivate'),
+      newActive ? `${u.name} ${t('users_will_be_activated')}` : `${u.name} ${t('users_will_be_deactivated')}`,
+      [
+        { text: t('common_cancel'), style: 'cancel' },
+        {
+          text: newActive ? t('users_activate') : t('users_deactivate'),
+          onPress: async () => {
+            setTogglingId(u.id);
+            try {
+              await updateUser(u.id, { active: newActive });
+            } catch {
+              Alert.alert(t('alert_error'), t('users_update_failed'));
+            } finally {
+              setTogglingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const openUpdateModal = (u: User) => {
+    setUpdateModalUser(u);
+    setEditName(u.name);
+    setEditPhone(u.phone ?? '');
+    setEditRole(u.role);
+    setEditSiteId(u.siteAccess?.[0] ?? null);
+  };
+
+  const handleUpdateUser = async () => {
+    if (!updateModalUser) return;
+    const name = editName.trim();
+    if (!name) {
+      Alert.alert(t('alert_required'), t('users_name_required_alert'));
+      return;
+    }
+    setUpdating(true);
+    const userId = updateModalUser.id;
     try {
-      await updateUser(u.id, { active: !u.active });
-    } catch {
-      Alert.alert('Error', 'Failed to update user');
+      await updateUser(userId, { name, phone: editPhone.trim() || undefined, role: editRole });
+      setUpdateModalUser(null);
+      if (editSiteId && currentUser && getAssignableRoles(currentUser.role).includes(editRole)) {
+        try {
+          await setSiteAssignment(editSiteId, { userId, role: editRole, vehicleIds: [] });
+        } catch {
+          Alert.alert(t('alert_error'), t('users_site_assignment_failed'));
+        }
+      }
+    } catch (e) {
+      Alert.alert(t('alert_error'), e instanceof Error ? e.message : t('users_update_failed'));
+    } finally {
+      setUpdating(false);
     }
   };
 
   const handleCreateUser = async () => {
     const name = newName.trim();
     if (!name) {
-      Alert.alert('Required', 'Name is required.');
+      Alert.alert(t('alert_required'), t('users_name_required_alert'));
       return;
     }
     const email = generatedEmail;
     if (!email) {
-      Alert.alert('Error', 'Could not generate email. Try a different name.');
+      Alert.alert(t('alert_error'), t('users_email_generate_failed'));
       return;
     }
     if (users.some((u) => u.email.toLowerCase() === email)) {
-      Alert.alert('Duplicate email', 'A user with this email already exists.');
+      Alert.alert(t('users_duplicate_email'), t('users_duplicate_email'));
       return;
     }
     setCreating(true);
@@ -139,7 +199,7 @@ export function UsersScreen() {
       setNewSiteId(null);
       setCredentialsModal({ email: result.email, password: result.temporary_password });
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : 'Failed to create user.');
+      Alert.alert(t('alert_error'), e instanceof Error ? e.message : t('users_create_failed'));
     } finally {
       setCreating(false);
     }
@@ -147,16 +207,16 @@ export function UsersScreen() {
 
   const handleResetPassword = async (u: { id: string; email: string }) => {
     if (u.id === currentUser?.id) {
-      Alert.alert('Not allowed', 'Use Settings to change your own password.');
+      Alert.alert(t('alert_not_allowed'), t('users_reset_own_password_disallowed'));
       return;
     }
     Alert.alert(
-      'Reset password',
-      `Generate a new temporary password for ${u.email}? They will need to be told the new password (e.g. via WhatsApp).`,
+      t('users_reset_password'),
+      `${u.email}? ${t('users_reset_password_confirm')}`,
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('common_cancel'), style: 'cancel' },
         {
-          text: 'Reset',
+          text: t('users_reset'),
           onPress: async () => {
             setResettingUserId(u.id);
             try {
@@ -166,7 +226,7 @@ export function UsersScreen() {
                 password: result.temporary_password,
               });
             } catch (e) {
-              Alert.alert('Error', e instanceof Error ? e.message : 'Failed to reset password.');
+              Alert.alert(t('alert_error'), e instanceof Error ? e.message : t('users_reset_failed'));
             } finally {
               setResettingUserId(null);
             }
@@ -180,12 +240,12 @@ export function UsersScreen() {
     if (!credentialsModal) return;
     const text = `HapyJo login\nEmail: ${credentialsModal.email}\nPassword: ${credentialsModal.password}`;
     await Clipboard.setStringAsync(text);
-    Alert.alert('Copied', 'Email and password copied to clipboard.');
+    Alert.alert(t('alert_copied'), t('users_copied'));
   };
 
   const handleShareWhatsApp = () => {
     if (!credentialsModal) return;
-    const text = `Your HapyJo login:\nEmail: ${credentialsModal.email}\nPassword: ${credentialsModal.password}\n\nYou can change your password in Settings after signing in.`;
+    const text = `Your HapyJo login:\nEmail: ${credentialsModal.email}\nPassword: ${credentialsModal.password}\n\n${t('users_share_login_body')}`;
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     Linking.openURL(url);
   };
@@ -193,8 +253,8 @@ export function UsersScreen() {
   return (
     <View className="flex-1 bg-gray-50">
       <Header
-        title="User Management"
-        subtitle="Manage system users"
+        title={t('users_title')}
+        subtitle={t('users_subtitle')}
         rightAction={
           currentUser && canCreateUser(currentUser.role) ? (
             <TouchableOpacity
@@ -206,15 +266,20 @@ export function UsersScreen() {
               className="bg-blue-600 rounded-lg px-4 py-2 flex-row items-center"
             >
               <Plus size={18} color="#ffffff" />
-              <Text className="text-white font-semibold ml-1">Add user</Text>
+              <Text className="text-white font-semibold ml-1">{t('users_add_user')}</Text>
             </TouchableOpacity>
           ) : null
         }
       />
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: theme.screenPadding }}>
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ padding: theme.screenPadding }}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={() => Keyboard.dismiss()}
+      >
         {loading ? (
           <Card className="py-8">
-            <Text className="text-center text-gray-600">Loading users...</Text>
+            <Text className="text-center text-gray-600">{t('common_loading')}</Text>
           </Card>
         ) : (
           <>
@@ -223,7 +288,7 @@ export function UsersScreen() {
                 <Search size={20} color="#9CA3AF" />
                 <TextInput
                   className="flex-1 ml-3 text-base text-gray-900"
-                  placeholder="Search users..."
+                  placeholder={t('users_search_placeholder')}
                   value={searchQuery}
                   onChangeText={setSearchQuery}
                   placeholderTextColor="#9CA3AF"
@@ -235,105 +300,117 @@ export function UsersScreen() {
               <Card className="flex-1 bg-blue-50">
                 <View className="items-center py-2">
                   <Text className="text-2xl font-bold text-gray-900">{users.filter((u) => u.active).length}</Text>
-                  <Text className="text-xs text-gray-600">Active Users</Text>
+                  <Text className="text-xs text-gray-600">{t('users_active_users')}</Text>
                 </View>
               </Card>
               <Card className="flex-1 bg-gray-100">
                 <View className="items-center py-2">
                   <Text className="text-2xl font-bold text-gray-900">{users.filter((u) => !u.active).length}</Text>
-                  <Text className="text-xs text-gray-600">Inactive Users</Text>
+                  <Text className="text-xs text-gray-600">{t('users_inactive_users')}</Text>
                 </View>
               </Card>
               <Card className="flex-1 bg-purple-50">
                 <View className="items-center py-2">
                   <Text className="text-2xl font-bold text-gray-900">{users.length}</Text>
-                  <Text className="text-xs text-gray-600">Total Users</Text>
+                  <Text className="text-xs text-gray-600">{t('users_total_users')}</Text>
                 </View>
               </Card>
             </View>
 
             <View className="mb-4">
-              <Text className="text-lg font-bold text-gray-900 mb-3">All Users</Text>
+              <Text className="text-lg font-bold text-gray-900 mb-3">{t('users_all_users')}</Text>
               {filteredUsers.length > 0 ? (
                 filteredUsers.map((u) => (
-                  <Card key={u.id} className="mb-3">
-                    <View className="flex-row items-start justify-between mb-3">
-                      <View className="flex-row flex-1">
-                        <View className="w-12 h-12 bg-blue-100 rounded-full items-center justify-center mr-3">
-                          <User size={24} color="#3B82F6" />
-                        </View>
-                        <View className="flex-1">
-                          <Text className="text-base font-bold text-gray-900">{u.name}</Text>
-                          <View className="flex-row items-center mt-1 gap-2 flex-wrap">
-                            <Badge variant={getRoleBadgeVariant(u.role)} size="sm">
-                              {getRoleDisplayLabel(u.role)}
-                            </Badge>
-                            <Badge variant={u.active ? 'success' : 'default'} size="sm">
-                              {u.active ? 'Active' : 'Inactive'}
-                            </Badge>
-                            {currentUser && canCreateUser(currentUser.role) && u.id !== currentUser.id && (
-                              <>
-                                <TouchableOpacity
-                                  onPress={() => handleToggleActive(u)}
-                                  className="bg-gray-200 px-2 py-1 rounded"
-                                >
-                                  <Text className="text-xs font-semibold text-gray-700">
-                                    {u.active ? 'Deactivate' : 'Activate'}
-                                  </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                  onPress={() => handleResetPassword(u)}
-                                  disabled={resettingUserId === u.id}
-                                  className="bg-amber-100 px-2 py-1 rounded"
-                                >
-                                  <Text className="text-xs font-semibold text-amber-800">
-                                    {resettingUserId === u.id ? 'Resetting…' : 'Reset password'}
-                                  </Text>
-                                </TouchableOpacity>
-                              </>
-                            )}
-                          </View>
+                  <Card key={u.id} className="mb-3 overflow-hidden">
+                    <View className="flex-row items-center border-b border-gray-100 pb-3 mb-3">
+                      <View className="w-14 h-14 rounded-full bg-blue-100 items-center justify-center mr-4">
+                        <Text className="text-lg font-bold text-blue-700">
+                          {(u.name || 'U').trim().slice(0, 2).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View className="flex-1">
+                        <Text className="text-base font-bold text-gray-900">{u.name}</Text>
+                        <View className="flex-row items-center mt-1 gap-2 flex-wrap">
+                          <Badge variant={getRoleBadgeVariant(u.role)} size="sm">
+                            {t(getRoleLabelKey(u.role))}
+                          </Badge>
+                          <Badge variant={u.active ? 'success' : 'default'} size="sm">
+                            {u.active ? t('common_active') : t('common_inactive')}
+                          </Badge>
                         </View>
                       </View>
-                    </View>
-                    <View className="gap-1">
-                      <View className="flex-row items-center">
-                        <Mail size={14} color="#6B7280" />
-                        <Text className="text-sm text-gray-600 ml-2">{u.email}</Text>
-                      </View>
-                      {u.phone && (
-                        <View className="flex-row items-center">
-                          <Phone size={14} color="#6B7280" />
-                          <Text className="text-sm text-gray-600 ml-2">{u.phone}</Text>
+                      {currentUser && canCreateUser(currentUser.role) && u.id !== currentUser.id && (
+                        <View className="items-end">
+                          <Text className="text-xs text-gray-500 mb-1">{t('users_status')}</Text>
+                          <Switch
+                            value={u.active}
+                            onValueChange={() => handleToggleActive({ ...u, name: u.name })}
+                            disabled={togglingId === u.id}
+                            trackColor={{ false: '#d1d5db', true: '#93c5fd' }}
+                            thumbColor={u.active ? '#2563eb' : '#9ca3af'}
+                          />
                         </View>
                       )}
+                    </View>
+                    <View className="gap-2 mb-3">
+                      <View className="flex-row items-center">
+                        <Mail size={16} color="#6B7280" />
+                        <Text className="text-sm text-gray-700 ml-2 flex-1" selectable>{u.email}</Text>
+                      </View>
+                      {u.phone ? (
+                        <View className="flex-row items-center">
+                          <Phone size={16} color="#6B7280" />
+                          <Text className="text-sm text-gray-700 ml-2">{u.phone}</Text>
+                        </View>
+                      ) : null}
                       {u.siteAccess && u.siteAccess.length > 0 && (
-                        <View className="flex-row items-start mt-2">
-                          <MapPin size={14} color="#6B7280" style={{ marginTop: 2 }} />
+                        <View className="flex-row items-start">
+                          <MapPin size={16} color="#6B7280" style={{ marginTop: 2 }} />
                           <View className="flex-1 ml-2">
-                            <Text className="text-xs text-gray-600">Site Access:</Text>
+                            <Text className="text-xs text-gray-500">{t('users_site_access')}</Text>
                             {u.siteAccess.slice(0, 3).map((siteId) => {
                               const site = sites.find((s) => s.id === siteId);
                               return (
-                                <Text key={siteId} className="text-sm text-gray-900">
+                                <Text key={siteId} className="text-sm text-gray-800">
                                   • {site?.name ?? siteId}
                                 </Text>
                               );
                             })}
                             {u.siteAccess.length > 3 && (
-                              <Text className="text-sm text-gray-500">+{u.siteAccess.length - 3} more</Text>
+                              <Text className="text-sm text-gray-500">{t('users_more_sites').replace('{count}', String(u.siteAccess.length - 3))}</Text>
                             )}
                           </View>
                         </View>
                       )}
                     </View>
+                    {currentUser && canCreateUser(currentUser.role) && u.id !== currentUser.id && (
+                      <View className="flex-row gap-2 pt-2 border-t border-gray-100">
+                        <TouchableOpacity
+                          onPress={() => openUpdateModal(u)}
+                          className="flex-1 flex-row items-center justify-center bg-blue-50 py-2.5 rounded-lg border border-blue-200"
+                        >
+                          <Pencil size={16} color="#2563eb" />
+                          <Text className="text-blue-700 font-semibold ml-2">{t('users_update_user')}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleResetPassword(u)}
+                          disabled={resettingUserId === u.id}
+                          className="flex-1 flex-row items-center justify-center bg-amber-50 py-2.5 rounded-lg border border-amber-200"
+                        >
+                          <KeyRound size={16} color="#b45309" />
+                          <Text className="text-amber-800 font-semibold ml-2">
+                            {resettingUserId === u.id ? t('users_resetting') : t('users_reset_password')}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </Card>
                 ))
               ) : (
                 <EmptyState
-                  icon={<User size={48} color="#9CA3AF" />}
-                  title="No users found"
-                  message="Try adjusting your search criteria"
+                  icon={<UserIcon size={48} color="#9CA3AF" />}
+                  title={t('users_no_users')}
+                  message={t('users_try_search')}
                 />
               )}
             </View>
@@ -346,22 +423,29 @@ export function UsersScreen() {
         <View className="flex-1 justify-end bg-black/50">
           <View className="bg-white rounded-t-2xl p-6 max-h-[85%]">
             <ScrollView>
-              <Text className="text-lg font-bold mb-4">Create user</Text>
-              <Text className="text-sm text-gray-600 mb-1">Name</Text>
+              <Text className="text-lg font-bold mb-4">{t('users_create_user')}</Text>
+              <View className="flex-row items-center mb-1">
+                <Text className="text-sm text-gray-600">{t('users_name_required')}</Text>
+                <InfoButton
+                  title={t('users_modal_name_title')}
+                  message={t('users_modal_name_message')}
+                  size={16}
+                />
+              </View>
               <TextInput
                 value={newName}
                 onChangeText={setNewName}
-                placeholder="Full name (e.g. John Mugenzi)"
+                placeholder={t('users_full_name_placeholder')}
                 className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white"
               />
               <View className="mb-3">
-                <Text className="text-sm text-gray-600 mb-1">Email (auto-generated)</Text>
+                <Text className="text-sm text-gray-600 mb-1">{t('users_email_auto')}</Text>
                 <Text className="text-base font-semibold text-gray-900 bg-gray-100 rounded-lg px-3 py-2">
                   {generatedEmail || '—'}
                 </Text>
-                <Text className="text-xs text-gray-500 mt-1">Internal address @{DOMAIN}. Password will be generated.</Text>
+                <Text className="text-xs text-gray-500 mt-1">{t('users_internal_address_hint').replace('{domain}', DOMAIN)}</Text>
               </View>
-              <Text className="text-sm text-gray-600 mb-1">Role</Text>
+              <Text className="text-sm text-gray-600 mb-1">{t('users_role')}</Text>
               <View className="flex-row flex-wrap gap-2 mb-3">
                 {assignableRoles.map((role) => (
                   <Pressable
@@ -370,12 +454,12 @@ export function UsersScreen() {
                     className={`px-3 py-2 rounded-lg ${newRole === role ? 'bg-blue-600' : 'bg-gray-200'}`}
                   >
                     <Text className={newRole === role ? 'text-white font-medium' : 'text-gray-700'}>
-                      {getRoleDisplayLabel(role)}
+                      {t(getRoleLabelKey(role))}
                     </Text>
                   </Pressable>
                 ))}
               </View>
-              <Text className="text-sm text-gray-600 mb-1">Phone (optional)</Text>
+              <Text className="text-sm text-gray-600 mb-1">{t('users_phone_optional')}</Text>
               <TextInput
                 value={newPhone}
                 onChangeText={setNewPhone}
@@ -383,14 +467,14 @@ export function UsersScreen() {
                 keyboardType="phone-pad"
                 className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white"
               />
-              <Text className="text-sm text-gray-600 mb-1">Assign to site (optional)</Text>
+              <Text className="text-sm text-gray-600 mb-1">{t('users_assign_site')}</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
                 <View className="flex-row gap-2">
                   <Pressable
                     onPress={() => setNewSiteId(null)}
                     className={`px-3 py-2 rounded-lg ${newSiteId === null ? 'bg-blue-600' : 'bg-gray-200'}`}
                   >
-                    <Text className={newSiteId === null ? 'text-white font-medium' : 'text-gray-700'}>None</Text>
+                    <Text className={newSiteId === null ? 'text-white font-medium' : 'text-gray-700'}>{t('users_none')}</Text>
                   </Pressable>
                   {sites.map((site) => (
                     <Pressable
@@ -406,10 +490,10 @@ export function UsersScreen() {
             </ScrollView>
             <View className="flex-row gap-3 mt-2">
               <TouchableOpacity onPress={() => setCreateModalVisible(false)} disabled={creating} className="flex-1 py-3 rounded-lg bg-gray-200 items-center">
-                <Text className="font-semibold text-gray-700">Cancel</Text>
+                <Text className="font-semibold text-gray-700">{t('common_cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity onPress={handleCreateUser} disabled={creating || !generatedEmail} className="flex-1 py-3 rounded-lg bg-blue-600 items-center">
-                <Text className="font-semibold text-white">{creating ? 'Creating…' : 'Create'}</Text>
+                <Text className="font-semibold text-white">{creating ? t('users_creating') : t('users_create')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -420,34 +504,110 @@ export function UsersScreen() {
       <Modal visible={!!credentialsModal} transparent animationType="fade">
         <View className="flex-1 justify-center bg-black/50 px-4">
           <View className="bg-white rounded-2xl p-6">
-            <Text className="text-lg font-bold mb-2">Share login details</Text>
-            <Text className="text-sm text-gray-600 mb-4">Copy or send via WhatsApp so the user can sign in.</Text>
+            <Text className="text-lg font-bold mb-2">{t('users_share_login')}</Text>
+            <Text className="text-sm text-gray-600 mb-4">{t('users_share_login_hint')}</Text>
             {credentialsModal && (
               <>
                 <View className="bg-gray-50 rounded-lg p-4 mb-2">
-                  <Text className="text-xs text-gray-500 mb-1">Email</Text>
+                  <Text className="text-xs text-gray-500 mb-1">{t('users_email_label')}</Text>
                   <Text className="text-base font-semibold text-gray-900" selectable>{credentialsModal.email}</Text>
                 </View>
                 <View className="bg-gray-50 rounded-lg p-4 mb-4">
-                  <Text className="text-xs text-gray-500 mb-1">Password</Text>
+                  <Text className="text-xs text-gray-500 mb-1">{t('users_password_label')}</Text>
                   <Text className="text-base font-semibold text-gray-900" selectable>{credentialsModal.password}</Text>
                 </View>
                 <View className="flex-row gap-3 mb-3">
                   <TouchableOpacity onPress={handleCopyCredentials} className="flex-1 py-3 rounded-lg bg-slate-200 flex-row items-center justify-center">
                     <Copy size={20} color="#334155" />
-                    <Text className="font-semibold text-slate-700 ml-2">Copy</Text>
+                    <Text className="font-semibold text-slate-700 ml-2">{t('users_copy')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={handleShareWhatsApp} className="flex-1 py-3 rounded-lg bg-green-600 flex-row items-center justify-center">
                     <MessageCircle size={20} color="#fff" />
-                    <Text className="font-semibold text-white ml-2">WhatsApp</Text>
+                    <Text className="font-semibold text-white ml-2">{t('users_whatsapp')}</Text>
                   </TouchableOpacity>
                 </View>
-                <Text className="text-xs text-gray-500 text-center mb-2">User can change password in Settings after first login.</Text>
+                <Text className="text-xs text-gray-500 text-center mb-2">{t('users_change_password_after_hint')}</Text>
               </>
             )}
             <TouchableOpacity onPress={() => setCredentialsModal(null)} className="py-3 rounded-lg bg-blue-600 items-center">
-              <Text className="font-semibold text-white">Done</Text>
+              <Text className="font-semibold text-white">{t('users_done')}</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Update user modal */}
+      <Modal visible={!!updateModalUser} transparent animationType="slide">
+        <View className="flex-1 justify-end bg-black/50">
+          <View className="bg-white rounded-t-2xl p-6 max-h-[85%]">
+            <Text className="text-lg font-bold mb-4">{t('users_update_user')}</Text>
+            <ScrollView>
+              <Text className="text-sm text-gray-600 mb-1">{t('users_name_required')}</Text>
+              <TextInput
+                value={editName}
+                onChangeText={setEditName}
+                placeholder={t('users_full_name_short')}
+                className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white"
+              />
+              <Text className="text-sm text-gray-600 mb-1">{t('users_phone_optional')}</Text>
+              <TextInput
+                value={editPhone}
+                onChangeText={setEditPhone}
+                placeholder="+250 788 000 000"
+                keyboardType="phone-pad"
+                className="border border-gray-300 rounded-lg px-3 py-2 mb-3 bg-white"
+              />
+              <Text className="text-sm text-gray-600 mb-1">{t('users_role')}</Text>
+              <View className="flex-row flex-wrap gap-2 mb-3">
+                {currentUser && getAssignableRoles(currentUser.role).map((role) => (
+                  <Pressable
+                    key={role}
+                    onPress={() => setEditRole(role)}
+                    className={`px-3 py-2 rounded-lg ${editRole === role ? 'bg-blue-600' : 'bg-gray-200'}`}
+                  >
+                    <Text className={editRole === role ? 'text-white font-medium' : 'text-gray-700'}>
+                      {t(getRoleLabelKey(role))}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+              <Text className="text-sm text-gray-600 mb-1">{t('users_assign_site')}</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
+                <View className="flex-row gap-2">
+                  <Pressable
+                    onPress={() => setEditSiteId(null)}
+                    className={`px-3 py-2 rounded-lg ${editSiteId === null ? 'bg-blue-600' : 'bg-gray-200'}`}
+                  >
+                    <Text className={editSiteId === null ? 'text-white font-medium' : 'text-gray-700'}>{t('users_none')}</Text>
+                  </Pressable>
+                  {sites.map((site) => (
+                    <Pressable
+                      key={site.id}
+                      onPress={() => setEditSiteId(site.id)}
+                      className={`px-3 py-2 rounded-lg ${editSiteId === site.id ? 'bg-blue-600' : 'bg-gray-200'}`}
+                    >
+                      <Text className={editSiteId === site.id ? 'text-white font-medium' : 'text-gray-700'}>{site.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </ScrollView>
+            </ScrollView>
+            <View className="flex-row gap-3 mt-2">
+              <TouchableOpacity
+                onPress={() => setUpdateModalUser(null)}
+                disabled={updating}
+                className="flex-1 py-3 rounded-lg bg-gray-200 items-center"
+              >
+                <Text className="font-semibold text-gray-700">{t('common_cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleUpdateUser}
+                disabled={updating || !editName.trim()}
+                className="flex-1 py-3 rounded-lg bg-blue-600 items-center"
+              >
+                <Text className="font-semibold text-white">{updating ? t('common_loading') : t('common_save')}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>

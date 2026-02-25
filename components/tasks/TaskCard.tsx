@@ -3,8 +3,9 @@ import { View, Text, TouchableOpacity } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { ProgressBar } from '@/components/ui/ProgressBar';
-import { MapPin, Calendar, AlertCircle } from 'lucide-react-native';
+import { MapPin, Calendar } from 'lucide-react-native';
 import { Task } from '@/types';
+import { useLocale } from '@/context/LocaleContext';
 
 interface TaskCardProps {
   task: Task;
@@ -12,6 +13,7 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, onPress }: TaskCardProps) {
+  const { t } = useLocale();
   const statusVariant = {
     pending: 'warning' as const,
     in_progress: 'info' as const,
@@ -56,7 +58,7 @@ export function TaskCard({ task, onPress }: TaskCardProps) {
         {task.status !== 'pending' && (
           <View>
             <View className="flex-row justify-between mb-1">
-              <Text className="text-xs text-gray-600">Progress</Text>
+              <Text className="text-xs text-gray-600">{t('task_progress_label')}</Text>
               <Text className="text-xs font-semibold text-gray-900">{task.progress}%</Text>
             </View>
             <ProgressBar progress={task.progress} showLabel={false} />

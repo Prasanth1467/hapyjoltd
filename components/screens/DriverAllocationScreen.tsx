@@ -1,29 +1,81 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Pressable, ActivityIndicator } from 'react-native';
+import React, { useMemo, useState, useCallback } from 'react';
+import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { Card } from '@/components/ui/Card';
 import { Header } from '@/components/ui/Header';
 import { useAuth } from '@/context/AuthContext';
 import { useMockAppStore } from '@/context/MockAppStoreContext';
 import { useResponsiveTheme } from '@/theme/responsive';
-import { getRoleDisplayLabel } from '@/lib/rbac';
+import { colors, dimensions, spacing } from '@/theme/tokens';
+import { PressableScale } from '@/components/ui/PressableScale';
+import { getRoleLabelKey } from '@/lib/rbac';
+import { useLocale } from '@/context/LocaleContext';
 import { ArrowLeft, User, Truck } from 'lucide-react-native';
 
 export function DriverAllocationScreen({ onBack }: { onBack: () => void }) {
+  const { t } = useLocale();
   const { user } = useAuth();
   const theme = useResponsiveTheme();
   const { sites, users, vehicles, siteAssignments, driverVehicleAssignments, setDriverVehicleAssignment, loading } = useMockAppStore();
 
-  const mySiteIds = sites.filter((s) => s.assistantSupervisorId === user?.id || user?.siteAccess?.includes(s.id)).map((s) => s.id);
-  const siteId = mySiteIds[0] ?? sites[0]?.id;
+  // Head supervisor sees all sites; assistant supervisor sees only their sites
+  const mySiteIds =
+    user?.role === 'head_supervisor'
+      ? sites.map((s) => s.id)
+      : sites.filter((s) => s.assistantSupervisorId === user?.id || user?.siteAccess?.includes(s.id)).map((s) => s.id);
+
+  const [selectedSiteIndex, setSelectedSiteIndex] = useState(0);
+  const siteId = mySiteIds[selectedSiteIndex] ?? mySiteIds[0] ?? sites[0]?.id;
   const site = sites.find((s) => s.id === siteId);
+
+  // Active vehicles at this site + free (unassigned) vehicles that can be allocated to this site
+  const siteVehicles = useMemo(
+    () =>
+      vehicles.filter(
+        (v) => (v.siteId === siteId || !v.siteId) && (v.status ?? 'active') === 'active'
+      ),
+    [vehicles, siteId]
+  );
+
   const siteDrivers = siteAssignments
     .filter((a) => a.siteId === siteId && (a.role === 'driver_truck' || a.role === 'driver_machine'))
     .map((a) => users.find((u) => u.id === a.userId))
     .filter(Boolean) as typeof users;
-  const siteVehicles = vehicles.filter((v) => v.siteId === siteId);
 
-  const getAssignedVehicleIds = (driverId: string) =>
-    driverVehicleAssignments.find((a) => a.siteId === siteId && a.driverId === driverId)?.vehicleIds ?? [];
+  const getAssignedVehicleIds = useCallback(
+    (driverId: string) =>
+      driverVehicleAssignments.find((a) => a.siteId === siteId && a.driverId === driverId)?.vehicleIds ?? [],
+    [driverVehicleAssignments, siteId]
+  );
+
+  // Free = not assigned to any driver at this site (real-time from driver_vehicle_assignments)
+  const allocatedVehicleIds = useMemo(() => {
+    const set = new Set<string>();
+    for (const a of driverVehicleAssignments) {
+      if (a.siteId !== siteId) continue;
+      for (const vid of a.vehicleIds ?? []) {
+        set.add(vid);
+      }
+    }
+    return set;
+  }, [driverVehicleAssignments, siteId]);
+
+  const freeVehicles = useMemo(
+    () => siteVehicles.filter((v) => !allocatedVehicleIds.has(v.id)),
+    [siteVehicles, allocatedVehicleIds]
+  );
+
+  // Per vehicle: which drivers have it assigned (for "Assigned to: A, B" label)
+  const vehicleToDriverNames = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const d of siteDrivers) {
+      const vIds = getAssignedVehicleIds(d.id);
+      for (const vid of vIds) {
+        if (!map[vid]) map[vid] = [];
+        map[vid].push(d.name);
+      }
+    }
+    return map;
+  }, [siteDrivers, getAssignedVehicleIds]);
 
   const toggleDriverVehicle = (driverId: string, vehicleId: string) => {
     const current = getAssignedVehicleIds(driverId);
@@ -35,53 +87,94 @@ export function DriverAllocationScreen({ onBack }: { onBack: () => void }) {
 
   if (!site && !loading) {
     return (
-      <View className="flex-1 bg-gray-50">
-        <Header title="Driver allocation" leftAction={<TouchableOpacity onPress={onBack}><Text className="text-blue-600 font-semibold">Back</Text></TouchableOpacity>} />
-        <View className="p-4"><Text className="text-gray-600">No site assigned.</Text></View>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <Header title={t('driver_allocation_title')} leftAction={<PressableScale onPress={onBack}><Text style={{ color: colors.primary, fontWeight: '600' }}>{t('common_back')}</Text></PressableScale>} />
+        <View style={{ padding: spacing.lg }}><Text style={{ color: colors.textSecondary }}>{t('driver_allocation_no_site')}</Text></View>
       </View>
     );
   }
 
   if (loading) {
     return (
-      <View className="flex-1 bg-gray-50">
-        <Header title="Driver allocation" leftAction={<TouchableOpacity onPress={onBack}><Text className="text-blue-600 font-semibold">Back</Text></TouchableOpacity>} />
-        <View className="flex-1 py-12 items-center justify-center">
-          <ActivityIndicator size="large" color="#2563eb" />
-          <Text className="text-gray-600 mt-3">Loading...</Text>
+      <View style={{ flex: 1, backgroundColor: colors.background }}>
+        <Header title={t('driver_allocation_title')} leftAction={<PressableScale onPress={onBack}><Text style={{ color: colors.primary, fontWeight: '600' }}>{t('common_back')}</Text></PressableScale>} />
+        <View style={{ flex: 1, paddingVertical: spacing.xxl, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={{ color: colors.textSecondary, marginTop: spacing.md }}>{t('driver_allocation_loading')}</Text>
         </View>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-gray-50">
+    <View style={{ flex: 1, backgroundColor: colors.background }}>
       <Header
-        title="Reassign drivers to vehicles"
-        subtitle={site.name}
+        title={t('driver_allocation_reassign')}
+        subtitle={site?.name ?? ''}
         leftAction={
-          <TouchableOpacity onPress={onBack} className="flex-row items-center">
-            <ArrowLeft size={22} color="#2563EB" />
-            <Text className="text-blue-600 font-semibold ml-1">Back</Text>
-          </TouchableOpacity>
+          <PressableScale onPress={onBack} style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <ArrowLeft size={dimensions.iconSize} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontWeight: '600', marginLeft: spacing.xs }}>{t('common_back')}</Text>
+          </PressableScale>
         }
       />
       <ScrollView className="flex-1" contentContainerStyle={{ padding: theme.screenPadding }}>
-        <Text className="text-sm text-gray-600 mb-3">Select which vehicles each driver can use at this site.</Text>
+        {mySiteIds.length > 1 && (
+          <View className="mb-3">
+            <Text className="text-xs text-gray-500 mb-2">{t('driver_allocation_site_picker')}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-2">
+              {mySiteIds.map((sid, idx) => {
+                const s = sites.find((x) => x.id === sid);
+                const active = siteId === sid;
+                return (
+                  <Pressable
+                    key={sid}
+                    onPress={() => setSelectedSiteIndex(idx)}
+                    className={`px-3 py-2 rounded-lg ${active ? 'bg-blue-600' : 'bg-gray-200'}`}
+                  >
+                    <Text className={active ? 'text-white font-medium' : 'text-gray-700'}>{s?.name ?? sid}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* Free vehicles – mandatory to show so head supervisor can see and assign them */}
+        <Card className="mb-4 bg-green-50 border border-green-200">
+          <Text className="text-sm font-semibold text-green-800 mb-2">{t('vehicles_free')} – {t('driver_allocation_free_vehicles_hint')}</Text>
+          {freeVehicles.length === 0 ? (
+            <Text className="text-gray-600 text-sm">{t('driver_allocation_all_assigned')}</Text>
+          ) : (
+            <View className="flex-row flex-wrap gap-2">
+              {freeVehicles.map((v) => (
+                <View key={v.id} className="px-3 py-2 rounded-lg bg-white border border-green-200 flex-row items-center">
+                  <Truck size={14} color="#059669" />
+                  <Text className="ml-1 font-medium text-gray-800">{v.vehicleNumberOrId}</Text>
+                  <Text className="ml-1 text-xs text-green-700">({t('vehicles_free')})</Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </Card>
+
+        <Text className="text-sm text-gray-600 mb-3">{t('driver_allocation_select_hint')}</Text>
         {siteDrivers.length === 0 ? (
-          <Card><Text className="text-gray-600">No drivers assigned to this site. Head Supervisor assigns drivers from Site detail.</Text></Card>
+          <Card><Text className="text-gray-600">{t('driver_allocation_no_drivers')}</Text></Card>
         ) : (
           siteDrivers.map((driver) => (
             <Card key={driver.id} className="mb-4">
               <View className="flex-row items-center mb-2">
                 <User size={20} color="#3B82F6" />
                 <Text className="font-semibold text-gray-900 ml-2">{driver.name}</Text>
-                <Text className="text-xs text-gray-500 ml-2">({getRoleDisplayLabel(driver.role)})</Text>
+                <Text className="text-xs text-gray-500 ml-2">({t(getRoleLabelKey(driver.role))})</Text>
               </View>
-              <Text className="text-xs text-gray-500 mb-2">Vehicles this driver can use:</Text>
+              <Text className="text-xs text-gray-500 mb-2">{t('driver_vehicles_can_use')}</Text>
               <View className="flex-row flex-wrap gap-2">
                 {siteVehicles.map((v) => {
                   const selected = getAssignedVehicleIds(driver.id).includes(v.id);
+                  const assignedTo = vehicleToDriverNames[v.id] ?? [];
+                  const assignedLabel = assignedTo.length > 0 ? assignedTo.join(', ') : t('vehicles_free');
                   return (
                     <Pressable
                       key={v.id}
@@ -90,6 +183,9 @@ export function DriverAllocationScreen({ onBack }: { onBack: () => void }) {
                     >
                       <Truck size={14} color={selected ? '#fff' : '#374151'} />
                       <Text className={`ml-1 font-medium ${selected ? 'text-white' : 'text-gray-700'}`}>{v.vehicleNumberOrId}</Text>
+                      {!selected && assignedTo.length > 0 && (
+                        <Text className="ml-1 text-xs text-gray-500">→ {assignedLabel}</Text>
+                      )}
                     </Pressable>
                   );
                 })}

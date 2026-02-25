@@ -1,5 +1,6 @@
 import React from 'react';
 import { TouchableOpacity, Text, TouchableOpacityProps, ActivityIndicator } from 'react-native';
+import { dimensions } from '@/theme/tokens';
 
 interface ButtonProps extends TouchableOpacityProps {
   children: React.ReactNode;
@@ -15,6 +16,7 @@ export function Button({
   loading = false,
   disabled,
   className = '',
+  style,
   ...props
 }: ButtonProps) {
   const variants = {
@@ -47,9 +49,10 @@ export function Button({
 
   return (
     <TouchableOpacity
-      className={`rounded-lg items-center justify-center ${variants[variant]} ${sizes[size]} ${
+      className={`rounded-lg items-center justify-center min-h-[48px] ${variants[variant]} ${sizes[size]} ${
         isDisabled ? 'opacity-50' : ''
       } ${className}`}
+      style={[{ minHeight: dimensions.minTouchHeight }, style]}
       disabled={isDisabled}
       {...props}
     >

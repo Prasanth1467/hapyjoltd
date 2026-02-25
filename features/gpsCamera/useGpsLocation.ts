@@ -46,7 +46,7 @@ export function useGpsLocation(): UseGpsLocationReturn {
       const location = await Promise.race([
         Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Highest,
-          mayShowUserSettings: true,
+          mayShowUserSettingsDialog: true,
         }),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('GPS timeout')), GPS_TIMEOUT_MS)
