@@ -467,6 +467,12 @@ export const en = {
   issues_my_issues: 'My issues',
   issues_none_reported: 'No issues reported.',
   issues_none_raised: 'You have not raised any issues.',
+  issues_status_open: 'Open',
+  issues_status_acknowledged: 'Acknowledged',
+  issues_status_resolved: 'Resolved',
+  issues_update_status: 'Update status',
+  issues_status_updated: 'Status updated',
+  issues_tap_status_to_update: 'Tap status to acknowledge or resolve',
 
   settings_in_app_notifications: 'In-app notifications',
   settings_clear_notifications: 'Clear all notifications',

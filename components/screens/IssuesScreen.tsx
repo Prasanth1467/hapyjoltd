@@ -32,11 +32,13 @@ export function IssuesScreen() {
   const { user } = useAuth();
   const { t } = useLocale();
   const theme = useResponsiveTheme();
-  const { sites, issues, addIssue, refetch, loading } = useMockAppStore();
+  const { sites, issues, addIssue, updateIssue, refetch, loading } = useMockAppStore();
   const { showToast } = useToast();
   const [refreshing, setRefreshing] = useState(false);
+  const [updatingIssueId, setUpdatingIssueId] = useState<string | null>(null);
   const canRaise = user?.role === 'driver_truck' || user?.role === 'driver_machine' || user?.role === 'assistant_supervisor';
   const canViewAll = user?.role === 'head_supervisor' || user?.role === 'owner';
+  const canUpdateStatus = user?.role === 'head_supervisor' || user?.role === 'owner';
   const thumbnailSize = theme.scaleMin(64);
   const modalMaxHeight = theme.height * theme.modalMaxHeightRatio;
 
@@ -53,6 +55,39 @@ export function IssuesScreen() {
 
   const getSiteName = (id: string) => sites.find((s) => s.id === id)?.name ?? id;
   const statusVariant = { open: 'warning' as const, acknowledged: 'info' as const, resolved: 'success' as const };
+
+  const issueStatusOptions: { value: 'open' | 'acknowledged' | 'resolved'; labelKey: string }[] = [
+    { value: 'open', labelKey: 'issues_status_open' },
+    { value: 'acknowledged', labelKey: 'issues_status_acknowledged' },
+    { value: 'resolved', labelKey: 'issues_status_resolved' },
+  ];
+
+  const onStatusChange = async (issue: import('@/types').Issue, newStatus: 'open' | 'acknowledged' | 'resolved') => {
+    if (issue.status === newStatus) return;
+    setUpdatingIssueId(issue.id);
+    try {
+      await updateIssue(issue.id, { status: newStatus });
+      showToast(t('issues_status_updated'));
+    } catch {
+      showToast(t('alert_error'));
+    } finally {
+      setUpdatingIssueId(null);
+    }
+  };
+
+  const openStatusPicker = (issue: import('@/types').Issue) => {
+    Alert.alert(
+      t('issues_update_status'),
+      issue.description.slice(0, 80) + (issue.description.length > 80 ? '…' : ''),
+      [
+        { text: t('common_cancel'), style: 'cancel' },
+        ...issueStatusOptions.map((opt) => ({
+          text: t(opt.labelKey),
+          onPress: () => onStatusChange(issue, opt.value),
+        })),
+      ]
+    );
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -155,7 +190,19 @@ export function IssuesScreen() {
           <Card key={issue.id} className="mb-3">
             <View className="flex-row items-start justify-between mb-2">
               <Text className="font-semibold text-gray-900 flex-1">{issue.description.slice(0, 60)}{issue.description.length > 60 ? '…' : ''}</Text>
-              <Badge variant={statusVariant[issue.status]} size="sm">{issue.status}</Badge>
+              {canUpdateStatus ? (
+                <Pressable
+                  onPress={() => openStatusPicker(issue)}
+                  disabled={updatingIssueId === issue.id}
+                  style={({ pressed }) => ({ opacity: pressed || updatingIssueId === issue.id ? 0.7 : 1 })}
+                >
+                  <Badge variant={statusVariant[issue.status]} size="sm">
+                    {t(`issues_status_${issue.status}`)}
+                  </Badge>
+                </Pressable>
+              ) : (
+                <Badge variant={statusVariant[issue.status]} size="sm">{t(`issues_status_${issue.status}`)}</Badge>
+              )}
             </View>
             <View className="flex-row items-center mb-1">
               <MapPin size={14} color="#6B7280" />
@@ -165,6 +212,9 @@ export function IssuesScreen() {
               <Calendar size={14} color="#6B7280" />
               <Text className="text-xs text-gray-500 ml-1">{issue.createdAt.slice(0, 10)}</Text>
             </View>
+            {canUpdateStatus && (
+              <Text className="text-xs text-gray-500 mt-1">{t('issues_tap_status_to_update')}</Text>
+            )}
             {issue.imageUris.length > 0 && (
               <Text className="text-xs text-gray-500 mt-1">{issue.imageUris.length} {t('issues_images_attached')}</Text>
             )}

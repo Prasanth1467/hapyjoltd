@@ -51,6 +51,7 @@ import {
   type QueuedItem,
 } from '@/lib/offlineQueue';
 import { generateId } from '@/lib/id';
+import { buildNotificationRows } from '@/lib/notificationScenarios';
 
 export interface MockAppStoreState {
   sites: Site[];
@@ -364,8 +365,11 @@ function useSupabaseStore(): MockAppStoreContextValue {
       }
       throw error;
     }
+    const siteName = vehicle.siteId ? state.sites.find((s) => s.id === vehicle.siteId)?.name : undefined;
+    const vehicleRows = buildNotificationRows('vehicle_added', { ...vehicle, siteName, type: vehicle.type }, () => generateId('n'));
+    for (const r of vehicleRows) await supabase.from('notifications').insert(r);
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.sites]);
 
   const updateVehicle = useCallback(async (id: string, patch: Partial<Vehicle>) => {
     const row = vehicleToRow(patch);
@@ -389,8 +393,11 @@ function useSupabaseStore(): MockAppStoreContextValue {
       setState((prev) => ({ ...prev, expenses: [...prev.expenses, expense] }));
       return;
     }
+    const siteName = state.sites.find((s) => s.id === expense.siteId)?.name;
+    const expenseRows = buildNotificationRows('expense_added', { ...expense, siteName }, () => generateId('n'));
+    for (const r of expenseRows) await supabase.from('notifications').insert(r);
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.sites]);
 
   const addTrip = useCallback(async (trip: Trip) => {
     const row = tripToRow(trip);
@@ -400,62 +407,93 @@ function useSupabaseStore(): MockAppStoreContextValue {
       setState((prev) => ({ ...prev, trips: [...prev.trips, trip] }));
       return;
     }
+    if (trip.status === 'completed') {
+      const siteName = state.sites.find((s) => s.id === trip.siteId)?.name;
+      const vehicleNumberOrId = state.vehicles.find((v) => v.id === trip.vehicleId)?.vehicleNumberOrId;
+      const tripRows = buildNotificationRows('trip_completed', { ...trip, siteName, vehicleNumberOrId }, () => generateId('n'));
+      for (const r of tripRows) await supabase.from('notifications').insert(r);
+    }
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.sites, state.vehicles]);
 
   const updateTrip = useCallback(async (id: string, patch: Partial<Trip>) => {
     const row = tripToRow(patch);
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('trips').update(row).eq('id', id);
     if (error) throw error;
+    if (patch.status === 'completed') {
+      const trip = state.trips.find((t) => t.id === id);
+      if (trip) {
+        const siteName = state.sites.find((s) => s.id === trip.siteId)?.name;
+        const vehicleNumberOrId = state.vehicles.find((v) => v.id === trip.vehicleId)?.vehicleNumberOrId;
+        const tripRows = buildNotificationRows('trip_completed', { ...trip, ...patch, siteName, vehicleNumberOrId }, () => generateId('n'));
+        for (const r of tripRows) await supabase.from('notifications').insert(r);
+      }
+    }
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.trips, state.sites, state.vehicles]);
 
   const addMachineSession = useCallback(async (session: MachineSession) => {
     const row = machineSessionToRow(session);
     const { error } = await supabase.from('machine_sessions').insert(row);
     if (error) throw error;
+    if (session.status === 'completed') {
+      const siteName = state.sites.find((s) => s.id === session.siteId)?.name;
+      const sessionRows = buildNotificationRows('machine_session_completed', { ...session, siteName }, () => generateId('n'));
+      for (const r of sessionRows) await supabase.from('notifications').insert(r);
+    }
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.sites]);
 
   const updateMachineSession = useCallback(async (id: string, patch: Partial<MachineSession>) => {
     const row = machineSessionToRow(patch);
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('machine_sessions').update(row).eq('id', id);
     if (error) throw error;
+    if (patch.status === 'completed') {
+      const session = state.machineSessions.find((m) => m.id === id);
+      if (session) {
+        const siteName = state.sites.find((s) => s.id === session.siteId)?.name;
+        const sessionRows = buildNotificationRows('machine_session_completed', { ...session, ...patch, siteName }, () => generateId('n'));
+        for (const r of sessionRows) await supabase.from('notifications').insert(r);
+      }
+    }
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.machineSessions, state.sites]);
 
   const addSurvey = useCallback(async (survey: Survey) => {
     const row = surveyToRow(survey);
     const { error } = await supabase.from('surveys').insert(row);
     if (error) throw error;
+    const siteName = state.sites.find((s) => s.id === survey.siteId)?.name;
+    const surveyRows = buildNotificationRows('survey_submitted', { ...survey, siteName }, () => generateId('n'));
+    for (const r of surveyRows) await supabase.from('notifications').insert(r);
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.sites]);
 
   const updateSurvey = useCallback(async (id: string, patch: Partial<Survey>) => {
     const row = surveyToRow(patch);
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('surveys').update(row).eq('id', id);
     if (error) throw error;
+    if (patch.status === 'approved') {
+      const survey = state.surveys.find((s) => s.id === id);
+      if (survey) {
+        const siteName = state.sites.find((s) => s.id === survey.siteId)?.name;
+        const approvedRows = buildNotificationRows('survey_approved', { ...survey, ...patch, siteName }, () => generateId('n'));
+        for (const r of approvedRows) await supabase.from('notifications').insert(r);
+      }
+    }
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.surveys, state.sites]);
 
   const addIssue = useCallback(async (issue: Issue) => {
     const row = issueToRow(issue);
     const { error } = await supabase.from('issues').insert(row);
     if (error) throw error;
-    const title = 'New issue reported';
-    const body = (issue.siteName ? `[${issue.siteName}] ` : '') + (issue.description?.slice(0, 120) || 'No description');
-    for (const targetRole of ['owner', 'head_supervisor', 'assistant_supervisor']) {
-      await supabase.from('notifications').insert({
-        id: generateId('n'),
-        target_role: targetRole,
-        title,
-        body,
-        link_id: issue.id,
-        link_type: 'issue',
-      });
+    const rows = buildNotificationRows('issue_raised', { ...issue }, () => generateId('n'));
+    for (const r of rows) {
+      await supabase.from('notifications').insert(r);
     }
     await refetch();
   }, [refetch]);
@@ -465,8 +503,15 @@ function useSupabaseStore(): MockAppStoreContextValue {
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('issues').update(row).eq('id', id);
     if (error) throw error;
+    if (patch.status === 'resolved' || patch.status === 'acknowledged') {
+      const issue = state.issues.find((i) => i.id === id);
+      if (issue) {
+        const resolvedRows = buildNotificationRows('issue_resolved', { ...issue, ...patch }, () => generateId('n'));
+        for (const r of resolvedRows) await supabase.from('notifications').insert(r);
+      }
+    }
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.issues]);
 
   const setSiteAssignment = useCallback(async (siteId: string, assignment: Partial<SiteAssignment> & { role: string }) => {
     const userId = assignment.userId ?? '';
@@ -474,8 +519,11 @@ function useSupabaseStore(): MockAppStoreContextValue {
     const row = { site_id: siteId, user_id: userId, role: assignment.role, vehicle_ids: assignment.vehicleIds ?? [] };
     const { error } = await supabase.from('site_assignments').upsert(row, { onConflict: 'site_id,user_id' });
     if (error) throw error;
+    const siteName = state.sites.find((s) => s.id === siteId)?.name;
+    const siteRows = buildNotificationRows('site_assignment', { siteId, siteName, role: assignment.role }, () => generateId('n'));
+    for (const r of siteRows) await supabase.from('notifications').insert(r);
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.sites]);
 
   const addUser = useCallback(async (newUser: User) => {
     const row = { id: newUser.id, ...profileToRow(newUser) };
@@ -505,6 +553,8 @@ function useSupabaseStore(): MockAppStoreContextValue {
       const result = data as { user_id?: string; email?: string; temporary_password?: string; error?: string };
       if (result?.error) throw new Error(result.error);
       if (!result?.user_id || !result?.temporary_password) throw new Error('Invalid response from server');
+      const userRows = buildNotificationRows('user_created', { user_id: result.user_id, name: params.name, role: params.role }, () => generateId('n'));
+      for (const r of userRows) await supabase.from('notifications').insert(r);
       await refetch();
       return {
         user_id: result.user_id,
@@ -545,21 +595,33 @@ function useSupabaseStore(): MockAppStoreContextValue {
     const row = { site_id: siteId, driver_id: driverId, vehicle_ids: vehicleIds };
     const { error } = await supabase.from('driver_vehicle_assignments').upsert(row, { onConflict: 'site_id,driver_id' });
     if (error) throw error;
+    const siteName = state.sites.find((s) => s.id === siteId)?.name;
+    const driverRows = buildNotificationRows('driver_vehicle_assignment', { siteId, siteName, vehicleIds }, () => generateId('n'));
+    for (const r of driverRows) await supabase.from('notifications').insert(r);
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.sites]);
 
   const updateTask = useCallback(async (id: string, patch: Partial<Task>) => {
     const row = taskToRow(patch);
     if (Object.keys(row).length === 0) return;
     const { error } = await supabase.from('tasks').update(row).eq('id', id);
     if (error) throw error;
+    if (patch.status === 'completed') {
+      const task = state.tasks.find((t) => t.id === id);
+      if (task) {
+        const taskRows = buildNotificationRows('task_completed', { ...task, ...patch }, () => generateId('n'));
+        for (const r of taskRows) await supabase.from('notifications').insert(r);
+      }
+    }
     await refetch();
-  }, [refetch]);
+  }, [refetch, state.tasks]);
 
   const addReport = useCallback(async (report: Report) => {
     const row = reportToRow(report);
     const { error } = await supabase.from('reports').insert(row);
     if (error) throw error;
+    const reportRows = buildNotificationRows('report_generated', { ...report }, () => generateId('n'));
+    for (const r of reportRows) await supabase.from('notifications').insert(r);
     await refetch();
   }, [refetch]);
 

@@ -6,6 +6,7 @@ import { ToastProvider } from '@/context/ToastContext';
 import { LocaleProvider , useLocale } from '@/context/LocaleContext';
 import { LoginScreen } from '@/components/auth/LoginScreen';
 import { AppNavigation } from '@/components/navigation/AppNavigation';
+import { PushTokenRegistration } from '@/components/PushTokenRegistration';
 import '../global.css';
 
 function AppContent() {
@@ -27,7 +28,12 @@ function AppContent() {
     return <LoginScreen />;
   }
 
-  return <AppNavigation />;
+  return (
+    <>
+      <PushTokenRegistration />
+      <AppNavigation />
+    </>
+  );
 }
 
 export default function HomeScreen() {

@@ -469,6 +469,12 @@ export const rn: Record<EnKeys, string> = {
   issues_my_issues: 'Ibibazo byanjye',
   issues_none_reported: 'Nta kibazo cyatanzwe.',
   issues_none_raised: 'Nta kibazo cyatanze.',
+  issues_status_open: 'Gufungura',
+  issues_status_acknowledged: 'Byemewe',
+  issues_status_resolved: 'Byakemukiwe',
+  issues_update_status: 'Hindura status',
+  issues_status_updated: 'Status yahindutse',
+  issues_tap_status_to_update: 'Tekanya status kugira ngo uyemure cyangwa ukemure',
 
   settings_in_app_notifications: 'Amatangazo mu porogaramu',
   settings_clear_notifications: 'Siba amatangazo yose',
